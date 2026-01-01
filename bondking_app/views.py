@@ -60,7 +60,10 @@ User = get_user_model()
 # =========================
 #  API HELPERS (CLIENT / PRODUCT)
 # =========================
-
+def root_redirect(request):
+    if request.user.is_authenticated:
+        return redirect("dr-kanban")
+    return redirect("login")
 @require_GET
 @login_required
 def client_detail_api(request, pk):

@@ -43,7 +43,9 @@ INSTALLED_APPS = [
     'bondking_app',
 ]
 
-LOGIN_URL = "/admin/login/"
+LOGIN_URL = "/login/"
+LOGIN_REDIRECT_URL = "/kanban/"
+LOGOUT_REDIRECT_URL = "/login/"
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -77,11 +79,14 @@ WSGI_APPLICATION = 'bondking.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "bondking",
+        "USER": "bondking_user",
+        "PASSWORD": "strongpassword",
+        "HOST": "localhost",
+        "PORT": "5432",
     }
 }
 

@@ -273,13 +273,16 @@ class Command(BaseCommand):
             if not company_name:
                 continue
             key = company_name.strip().upper()
+            raw_since = norm_str(r.get("since"))
+            since = raw_since[:4] if raw_since.isdigit() else None
+
 
             client, _ = Client.objects.update_or_create(
                 company_name=company_name,
                 defaults={
                     "name_of_owner": norm_str(r.get("name_of_owner")),
                     "rented": to_bool(r.get("rented"), default=False),
-                    "since": norm_str(r.get("since")) or None,
+                    "since": since,
                     "unit_room": norm_str(r.get("unit_room")),
                     "street_number": norm_str(r.get("street_number")),
                     "street_name": norm_str(r.get("street_name")),

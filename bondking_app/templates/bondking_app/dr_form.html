@@ -234,16 +234,13 @@ input[name$="-id"] {
                   <div class="fw-semibold text-warning mb-2">Invoice Address</div>
 
                   <div class="small text-muted mb-1">Name:</div>
-                  <div class="fw-semibold mb-2">Bondking</div>
+                  <div class="fw-semibold mb-2">Bond Solutions Incorporated</div>
 
                   <div class="small text-muted mb-1">Contact No.:</div>
-                  <div class="mb-2">(add office number here)</div>
-
-                  <div class="small text-muted mb-1">Contact Person:</div>
-                  <div class="mb-2">(e.g. Accounting Dept.)</div>
+                  <div class="mb-2">0962-577-9791</div>
 
                   <div class="small text-muted mb-1">Delivery Address:</div>
-                  <div class="mb-2">(e.g. Company main office address)</div>
+                  <div class="mb-2">FSS Building 1 Scout Castor, corner Scout Tuazon, Barangay Laging Handa, Quezon City</div>
                 </div>
               </div>
 
@@ -486,15 +483,16 @@ input[name$="-id"] {
         </div>
 
         <div class="d-flex justify-content-end">
+          {% if not is_create and dr.approval_status == "APPROVED" %}
+            <a href="{% url 'dr-print' dr.id %}" target="_blank" class="btn btn-outline-secondary btn-sm" style="margin-right: 10px;">
+              🖨 Print DR
+            </a>
+          {% endif %}
           <button type="submit" name="action" value="save" class="btn btn-primary px-4">
             Save
           </button>
         </div>
-        {% if not is_create and dr.approval_status == "APPROVED" %}
-          <a href="{% url 'dr-print' dr.id %}" target="_blank" class="btn btn-outline-secondary btn-sm">
-            🖨 Print DR
-          </a>
-        {% endif %}
+
       </div>
     </div>
             {% if not is_create and updates %}

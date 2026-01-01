@@ -195,7 +195,7 @@ class Client(models.Model):
         help_text="Unit, room, floor, or apartment number"
     )
     street_number = models.CharField(
-        max_length=50,
+        max_length=150,
         help_text="House or building number"
     )
     street_name = models.CharField(
@@ -1553,7 +1553,7 @@ class PurchaseOrderParticular(models.Model):
         on_delete=models.CASCADE,
         related_name="particulars",
     )
-    particular = models.CharField(max_length=255)
+    particular = models.CharField(max_length=500)
     quantity = models.PositiveIntegerField(null=True, blank=True)
     unit_price = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True
