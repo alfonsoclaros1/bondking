@@ -1,15 +1,225 @@
+{% load static %}
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Bondking Login</title>
-</head>
-<body>
-  <h2>Login</h2>
+  <meta charset="UTF-8" />
+  <title>Login | Bondking</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <form method="post">
-    {% csrf_token %}
-    {{ form.as_p }}
-    <button type="submit">Login</button>
-  </form>
+  <!-- Inter font -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #000000;
+      --card: #141414;
+      --accent: #f5a623;
+      --accent-dark: #d48806;
+      --muted: #9ca3af;
+      --border: #2a2a2a;
+      --danger-bg: #2b0f0f;
+      --danger-border: #7f1d1d;
+      --danger-text: #fecaca;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at top, #1a1a1a, #000000);
+      color: #f3f4f6;
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 34px;
+      box-shadow: 0 25px 80px rgba(0,0,0,0.7);
+    }
+
+    .logo {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 22px;
+    }
+
+    .logo img {
+      max-height: 64px;
+    }
+
+    .logo::after {
+      content: "";
+      width: 48px;
+      height: 3px;
+      background: var(--accent);
+      margin-top: 14px;
+      border-radius: 2px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 22px 0 6px;
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 0.9rem;
+      color: var(--muted);
+      margin-bottom: 26px;
+    }
+
+    .notice {
+      background: #1a1a1a;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 20px;
+      line-height: 1.4;
+    }
+
+    .errorlist {
+      background: var(--danger-bg);
+      border: 1px solid var(--danger-border);
+      color: var(--danger-text);
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      margin-bottom: 18px;
+      list-style: none;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #0b0b0b;
+      color: #f3f4f6;
+      font-size: 0.95rem;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+
+    .login-btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+      color: #1a1a1a;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      margin-top: 6px;
+    }
+
+    .login-btn:hover {
+      filter: brightness(1.08);
+    }
+
+    .links {
+      margin-top: 18px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .links a {
+      font-size: 0.85rem;
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .links a:hover {
+      text-decoration: underline;
+    }
+
+    .footer {
+      margin-top: 26px;
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="login-card">
+
+    <div class="logo">
+      <img src="{% static 'img/bondking-logo-bw.jpg' %}" alt="Bondking Logo">
+    </div>
+
+    <h1>Welcome back</h1>
+    <div class="subtitle">Sign in to Bondking</div>
+
+    <!-- IMPORTANT NOTICE FOR IMPORTED USERS -->
+    <div class="notice">
+      If this is your first time logging in and you were given an account by an administrator,
+      you may not have a password yet.  
+      Please use <strong>Forgot password</strong> to set one.
+    </div>
+
+    {% if form.errors %}
+      {{ form.errors }}
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+
+      <div class="form-group">
+        <label for="id_username">Username</label>
+        {{ form.username }}
+      </div>
+
+      <div class="form-group">
+        <label for="id_password">Password</label>
+        {{ form.password }}
+      </div>
+
+      <button type="submit" class="login-btn">
+        Sign in
+      </button>
+    </form>
+
+    <div class="links">
+      <a href="{% url 'password_reset' %}">Forgot password?</a>
+    </div>
+
+    <div class="footer">
+      © 2026 Bondking
+    </div>
+
+  </div>
 </body>
 </html>
