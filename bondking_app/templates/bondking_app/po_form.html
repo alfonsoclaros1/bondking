@@ -1,0 +1,488 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_create %}New PO{% else %}Edit PO{% endif %}{% endblock %}
+
+{% block content %}
+<div class="container py-3" style="max-width: 1100px;">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h4 class="mb-0">
+        {% if is_create %}New Purchase Order{% else %}Edit Purchase Order{% endif %}
+      </h4>
+      <small class="text-muted">Stage: {{ stage }}</small>
+    </div>
+    <a href="{% url 'po-table' %}" class="btn btn-outline-secondary btn-sm">Back to Table</a>
+  </div>
+
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <div class="row g-3">
+      <div class="col-md-3">
+        <div class="card">
+          <div class="card-header py-2">
+            <strong>PO Lifecycle</strong>
+          </div>
+
+          <ul class="list-group list-group-flush small po-lifecycle">
+            {% for step in po_flow %}
+            <li class="list-group-item d-flex align-items-center
+                {% if step.is_current %} po-step-active {% endif %}
+                {% if step.is_done %} po-step-complete {% endif %}
+                {% if po.approval_status == 'DECLINED' and step.is_current %} po-step-declined {% endif %}
+                {% if po.is_archived and step.is_current %} po-step-archived {% endif %}
+            ">
+
+              <!-- Left icon -->
+              <span class="me-2 po-step-icon">
+                {% if step.is_done %}
+                  ✓
+                {% elif step.is_current %}
+                  ●
+                {% else %}
+                  ○
+                {% endif %}
+              </span>
+
+              <!-- Label -->
+              <span class="po-step-label">
+                {{ step.label }}
+              </span>
+
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+    <!-- Next Step Card -->
+    <div class="col-md-9">
+          {% if not is_create and po.status != 'REQUEST_FOR_PAYMENT' %}
+      <div class="card mb-3
+        {% if po.is_archived %}border-success
+        {% elif po.approval_status == 'DECLINED' or po.is_cancelled %}border-danger
+        {% else %}border-warning{% endif %}
+      ">
+        <div class="card-body">
+
+          <h6 class="mb-1">
+            {% if po.is_archived %}
+              Archived
+            {% elif po.approval_status == 'DECLINED' %}
+              Action Required
+            {% else %}
+              Awaiting {{ next_actor }}
+            {% endif %}
+          </h6>
+
+          <p class="small text-muted mb-2">
+            {{ next_step_description }}
+          </p>
+
+          <div class="d-flex gap-2">
+            {% if can_approve %}
+              <button name="action" value="approve" class="btn btn-sm btn-success">Approve</button>
+              <button name="action" value="decline" class="btn btn-sm btn-danger">Decline</button>
+            {% endif %}
+
+            {% if can_submit %}
+              <button name="action" value="submit" class="btn btn-sm btn-primary">
+                {{ submit_label }}
+              </button>
+            {% endif %}
+
+            {% if can_archive %}
+              <button name="action" value="archive" class="btn btn-sm btn-success">
+                Archive
+              </button>
+            {% endif %}
+          </div>
+
+        </div>
+      </div>
+      {% endif %}
+
+
+    <!-- PO HEADER -->
+    <div class="card mb-4">
+      <div class="card-header py-2">
+        <strong>PO Header</strong>
+      </div>
+      <div class="card-body">
+        <div class="row g-3 align-items-center">
+
+          <div class="col-md-4">
+            <label class="form-label mb-1">Paid To</label>
+            {{ form.paid_to }}
+          </div>
+
+          <div class="col-md-2">
+            <label class="form-label mb-1">Date</label>
+            {{ form.date }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">RFP Number</label>
+            {{ form.rfp_number }}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label mb-1">PO Number</label>
+            {{ form.po_number }}
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label mb-1">Cheque No.</label>
+            {{ form.cheque_number }}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label mb-1">Product ID</label>
+
+            <div class="input-group">
+              {{ form.product_id_ref }}
+
+              <button
+                type="button"
+                class="btn btn-outline-secondary"
+                id="add-product-id-btn"
+                title="Add Product ID"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          <!-- Address row -->
+          <div class="col-12 mt-2">
+            <div class="row g-2 align-items-center">
+              <div class="col-md-2">
+                <label class="form-label mb-0">Address</label>
+              </div>
+              <div class="col-md-10">
+                {{ form.address }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PARTICULARS -->
+    <div class="card mb-4">
+      <div class="card-header py-2">
+        <strong>Particulars</strong>
+      </div>
+      <div class="card-body">
+
+        {{ formset.management_form }}
+
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <!-- Particular takes remaining space -->
+                <th class="text-start">Particular</th>
+
+                <!-- Fixed, readable numeric columns -->
+                <th class="text-end" style="width: 90px;">Qty</th>
+                <th class="text-end" style="width: 150px;">Unit Price</th>
+                <th class="text-end" style="width: 160px;">Line Total</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {% for f in formset.forms %}
+              {{ f.id }}
+              <tr>
+                <!-- Particular MUST fill column -->
+                <td>
+                  {{ f.particular }}
+                </td>
+
+                <td class="text-end">
+                  {{ f.quantity }}
+                </td>
+
+                <td class="text-end">
+                  {{ f.unit_price }}
+                </td>
+
+                <td class="text-end fw-medium align-middle">
+                  ₱ <span class="line-total">0.00</span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- SUBTOTAL -->
+        <div class="d-flex justify-content-end mt-2">
+          <div class="fw-semibold">
+            Subtotal: ₱<span id="po-subtotal">0.00</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+
+
+    <!-- ACTIONS -->
+    <div class="d-flex justify-content-end gap-2">
+      <a href="{% url 'po-table' %}" class="btn btn-outline-secondary">Back</a>
+      {% if can_edit %}
+      <button type="submit" name="action" value="save" class="btn btn-primary">
+        {% if is_create %}Create RFP{% else %}Save Changes{% endif %}
+      </button>
+      {% endif %}
+      {% if stage == "PO_FILING" %}
+      <form method="post" action="{% url 'po-archive' po.id %}" class="d-inline">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-danger">
+              Archive PO
+          </button>
+      </form>
+      {% endif %}
+    </div>
+    {% if not is_create and po.approval_status == "APPROVED" and stage != "REQUEST_FOR_PAYMENT" and stage != "REQUEST_FOR_PAYMENT_APPROVAL" %}
+      <a class="btn btn-outline-dark" href="{% url 'po-print' po.id %}" target="_blank">
+        Print PO
+      </a>
+    {% endif %}
+
+
+  </form>
+</div>  <!-- end right column -->
+</div>  <!-- end row -->
+
+  {% if updates %}
+  <div class="card mt-4">
+    <div class="card-header py-2">
+      <strong>Updates</strong>
+    </div>
+    <div class="card-body">
+      <ul class="mb-0">
+        {% for u in updates %}
+          <li class="mb-2">
+            <div class="small text-muted">{{ u.timestamp|date:"Y-m-d H:i" }}</div>
+            <div>{{ u.system_update }}</div>
+            {% if u.user_notes %}
+              <div class="text-muted small">{{ u.user_notes }}</div>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Product ID Quick Add Modal -->
+<div class="modal fade" id="productIdModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow-sm">
+      <div class="modal-header">
+        <h5 class="modal-title">New Product ID</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Product ID Code</label>
+          <input
+            type="text"
+            class="form-control"
+            id="product-id-code"
+            placeholder="e.g. BSI-HQ-EXPENSES"
+            required
+          />
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label">Description (optional)</label>
+          <input
+            type="text"
+            class="form-control"
+            id="product-id-desc"
+            placeholder="Optional description"
+          />
+        </div>
+
+        <div
+          id="product-id-error"
+          class="text-danger small d-none mt-2"
+        ></div>
+      </div>
+
+      <div class="modal-footer">
+        <button
+          type="button"
+          class="btn btn-outline-secondary"
+          data-bs-dismiss="modal"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="btn btn-primary"
+          id="save-product-id-btn"
+        >
+          Create Product ID
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+
+<script>
+const productIdModalEl = document.getElementById("productIdModal");
+const productIdModal = new bootstrap.Modal(productIdModalEl);
+
+document.getElementById("add-product-id-btn")?.addEventListener("click", () => {
+  // reset modal state
+  document.getElementById("product-id-code").value = "";
+  document.getElementById("product-id-desc").value = "";
+  document.getElementById("product-id-error").classList.add("d-none");
+
+  productIdModal.show();
+});
+
+document
+  .getElementById("save-product-id-btn")
+  ?.addEventListener("click", () => {
+    const code = document.getElementById("product-id-code").value.trim();
+    const description = document
+      .getElementById("product-id-desc")
+      .value.trim();
+
+    const errorEl = document.getElementById("product-id-error");
+
+    if (!code) {
+      errorEl.textContent = "Product ID code is required.";
+      errorEl.classList.remove("d-none");
+      return;
+    }
+
+    fetch("{% url 'product-id-quick-create' %}", {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": "{{ csrf_token }}",
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        code,
+        description,
+      }),
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.ok) {
+          errorEl.textContent =
+            data.error || "Failed to create Product ID.";
+          errorEl.classList.remove("d-none");
+          return;
+        }
+
+        const select = document.querySelector(
+          "select[name='product_id_ref']"
+        );
+
+        const option = document.createElement("option");
+        option.value = data.id;
+        option.textContent = data.label;
+        option.selected = true;
+
+        select.appendChild(option);
+        select.dispatchEvent(new Event("change"));
+
+        productIdModal.hide();
+      });
+  });
+
+function formatPeso(value) {
+  return value.toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+(function () {
+
+  function recalcTotals() {
+    let subtotal = 0;
+
+    document.querySelectorAll("tbody tr").forEach(row => {
+      const qtyInput = row.querySelector("input[name$='quantity']");
+      const priceInput = row.querySelector("input[name$='unit_price']");
+      const lineTotalEl = row.querySelector(".line-total");
+
+      const qty = parseFloat(qtyInput?.value) || 0;
+      const price = parseFloat(priceInput?.value) || 0;
+      const lineTotal = qty * price;
+
+      subtotal += lineTotal;
+
+      if (lineTotalEl) {
+        lineTotalEl.textContent = formatPeso(lineTotal);
+      }
+    });
+
+    const subtotalEl = document.getElementById("po-subtotal");
+    if (subtotalEl) {
+      subtotalEl.textContent = formatPeso(subtotal);
+    }
+  }
+
+  // Recalculate on input
+  document.addEventListener("input", function (e) {
+    if (
+      e.target.name?.endsWith("quantity") ||
+      e.target.name?.endsWith("unit_price")
+    ) {
+      recalcTotals();
+    }
+  });
+
+  // Initial calculation on load (edit mode)
+  document.addEventListener("DOMContentLoaded", recalcTotals);
+
+})();
+</script>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* Tighten inputs ONLY inside particulars table */
+  .particulars-table .form-control {
+    padding-left: 0.375rem;   /* tighter than default */
+    padding-right: 0.375rem;  /* tighter than default */
+  }
+  /* PO Lifecycle Sidebar */
+
+.po-lifecycle .completed-step {
+    background-color: #f8f9fa; /* muted light gray */
+    color: #adb5bd;           /* Bootstrap muted text */
+}
+
+.po-lifecycle .completed-step .step-label {
+    text-decoration: line-through;
+    opacity: 0.6;
+}
+
+.po-lifecycle .active-step {
+    background-color: #fff3cd; /* Bootstrap warning background */
+    color: #664d03;
+    font-weight: 600;
+}
+
+.po-lifecycle .list-group-item {
+    border-left: 4px solid transparent;
+}
+
+.po-lifecycle .active-step {
+    border-left-color: #ffc107; /* yellow accent */
+}
+
+</style>
+{% endblock %}

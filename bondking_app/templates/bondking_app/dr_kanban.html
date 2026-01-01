@@ -1,0 +1,849 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Delivery Receipt Kanban{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+      <h2 class="mb-0">Delivery Receipt Board</h2>
+      <small class="text-muted">
+        Drag &amp; drop DRs between stages. Yellow cards are pending approvals.
+      </small>
+    </div>
+
+    <div class="d-flex align-items-center flex-wrap gap-3">
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-warning text-dark">&nbsp;</span>
+        <small>Pending approval</small>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-danger">&nbsp;</span>
+        <small>Declined / for clarification</small>
+      </div>
+      <a href="{% url 'dr-table' %}" class="btn btn-outline-secondary btn-sm">
+        View Table
+      </a>
+      <a href="{% url 'dr-create' %}" class="btn btn-primary btn-sm">
+        + New DR
+      </a>
+    </div>
+  </div>
+
+  {% if is_admin_like %}
+  <div class="mb-3 d-flex align-items-center flex-wrap gap-2">
+    <label for="sim-role" class="form-label mb-0 me-2">
+      Simulate role (for this board only):
+    </label>
+    <select id="sim-role" class="form-select form-select-sm" style="max-width: 260px;">
+      {% for value, label in available_roles %}
+      <option value="{{ value }}">{{ label }}</option>
+      {% endfor %}
+    </select>
+    <small class="text-muted">
+      Top Management can preview moves/approvals as different roles.
+    </small>
+  </div>
+  {% endif %}
+
+  <div id="kanban-board" class="kanban-board">
+    {% for col in columns_render %}
+    <div class="kanban-column-wrapper">
+      <div class="kanban-column" data-column="{{ col.key }}">
+        <div class="kanban-column-header">
+          <div class="d-flex justify-content-between align-items-center">
+            <strong>{{ col.label }}</strong>
+            <span class="badge bg-secondary" id="count-{{ col.key }}">
+              {{ col.items|length }}
+            </span>
+          </div>
+        </div>
+        <div class="kanban-column-body" data-column="{{ col.key }}">
+          {% if col.items %}
+            {% for dr in col.items %}
+            <div
+              class="kanban-card card mb-2
+                {% if dr.approval_status == 'PENDING' %}kanban-card-pending{% elif dr.approval_status == 'DECLINED' %}kanban-card-declined{% endif %}"
+              draggable="{% if dr.approval_status != 'PENDING' %}true{% else %}false{% endif %}"
+              data-dr-id="{{ dr.id }}"
+              data-current-column="{{ col.key }}"
+              data-payment-method="{{ dr.payment_method }}"
+              data-approval-status="{{ dr.approval_status }}"
+              data-move-url="{% url 'dr-move' dr.id %}"
+              data-approve-url="{% url 'dr-approve' dr.id %}"
+              data-decline-url="{% url 'dr-decline' dr.id %}"
+              data-archive-url="{% url 'dr-archive' dr.id %}"
+            >
+              <div class="card-body p-2">
+                {# Approve / Decline above the title #}
+                {% if dr.approval_status == "PENDING" %}
+                <div class="d-flex justify-content-start gap-1 mb-2 kanban-approval-buttons">
+                  <button type="button" class="btn btn-success btn-sm btn-approve">✓</button>
+                  <button type="button" class="btn btn-danger btn-sm btn-decline">✕</button>
+                </div>
+                {% elif col.key == "DEPOSITED" and user.is_superuser %}
+                  <div class="d-flex justify-content-start mb-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm btn-archive">
+                      Archive
+                    </button>
+                  </div>
+                {% endif %}
+
+
+                {# Notion-style title + subtitle #}
+                <div class="mb-1">
+                  <div class="fw-semibold">
+                    <a href="{% url 'dr-edit' dr.id %}"
+                      class="text-decoration-none text-reset">
+                      {{ dr.client.company_name }}
+                    </a>
+                  </div>
+                  <div class="text-muted small">
+                    DR {{ dr.dr_number }}
+                  </div>
+                </div>
+                {# Date of order + amount (no "Date:" label) #}
+                <div class="small mb-2">
+                  <div>{{ dr.date_of_order|date:"Y-m-d" }}</div>
+                  <div>₱{{ dr.total_amount|floatformat:2|intcomma }}</div>
+                </div>
+
+                {# Notion-like tags for agent & payment method #}
+                <div class="d-flex flex-wrap gap-1">
+                  <span class="badge rounded-pill bg-light border text-muted">
+                    {{ dr.agent.get_full_name|default:dr.agent.username }}
+                  </span>
+                  <span class="badge rounded-pill bg-light border text-muted">
+                    {{ dr.get_payment_method_display }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="kanban-empty text-muted small">
+              No DRs here
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+    <!-- D2D STOCKS (NON-WORKFLOW COLUMN) -->
+    <div class="kanban-column-wrapper">
+      <div class="kanban-column d2d-stocks-column">
+        <div class="kanban-column-header">
+          <div class="d-flex justify-content-between align-items-center">
+            <strong>D2D Stocks</strong>
+            <span class="badge bg-secondary">
+              {{ d2d_stocks|length }}
+            </span>
+          </div>
+        </div>
+
+        <div class="kanban-column-body d2d-stocks-body">
+          {% if d2d_stocks %}
+            {% for dr in d2d_stocks %}
+            <div class="kanban-card card mb-2 d2d-stock-card"
+                draggable="false"
+                data-dr-id="{{ dr.id }}"
+                data-archive-url="{% url 'dr-archive' dr.id %}">
+              <div class="card-body p-2">
+
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <div class="fw-semibold">
+                    <a href="{% url 'dr-edit' dr.id %}"
+                      class="text-decoration-none text-reset">
+                      {{ dr.agent.get_full_name|default:dr.agent.username }}
+                    </a>
+                  </div>
+
+                  {% if user.is_superuser %}
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary btn-sm btn-archive">
+                    Archive
+                  </button>
+                  {% endif %}
+                </div>
+
+                <div class="text-muted small mb-2">
+                  D2D DR {{ dr.dr_number }}
+                </div>
+
+                <div class="small mb-2">
+                  Issued: {{ dr.date_of_order|date:"Y-m-d" }}<br>
+                  Total: ₱{{ dr.total_amount|floatformat:2|intcomma }}
+                </div>
+
+                <button
+                  type="button"
+                  class="btn btn-sm btn-outline-primary w-100 btn-d2d-transactions"
+                  data-dr-id="{{ dr.id }}">
+                  See Transactions
+                </button>
+
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div class="kanban-empty text-muted small">
+              No D2D Stocks
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+  .kanban-board {
+    display: flex;
+    gap: 1rem;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+  }
+
+  .kanban-column-wrapper {
+    flex: 0 0 auto;
+    min-width: 200px;
+    max-width: 280px;
+  }
+
+  .kanban-column {
+    background-color: #f8f9fa;
+    border-radius: 0.75rem;
+    border: 1px solid #dee2e6;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 210px);
+  }
+
+  .kanban-column-header {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #dee2e6;
+    background-color: #e9ecef;
+    border-top-left-radius: 0.75rem;
+    border-top-right-radius: 0.75rem;
+  }
+
+  .kanban-column-body {
+    padding: 0.5rem;
+    overflow-y: auto;
+    flex: 1;
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .kanban-column-body.drop-allowed {
+    background-color: #f8f9fc;
+  }
+
+  .kanban-column-body.drop-hover {
+    background-color: #e2f0ff;
+    box-shadow: inset 0 0 0 2px rgba(13, 110, 253, 0.4);
+  }
+
+  .kanban-card {
+    cursor: grab;
+    transition: box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+  }
+
+  .kanban-card.dragging {
+    opacity: 0.75;
+    box-shadow: 0 0.5rem 1.25rem rgba(0, 0, 0, 0.25);
+    transform: scale(1.02);
+  }
+
+  .kanban-card-pending {
+    border-left: 4px solid #ffc107;
+    background-color: #fff9e6;
+  }
+
+  .kanban-card-declined {
+    border-left: 4px solid #dc3545;
+    background-color: #fdeaea;
+  }
+
+  .kanban-empty {
+    border: 1px dashed #ced4da;
+    border-radius: 0.5rem;
+    padding: 0.45rem 0.5rem;
+    text-align: center;
+  }
+  
+
+  @media (max-width: 768px) {
+    .kanban-column-wrapper {
+      min-width: 220px;
+    }
+  }
+  .d2d-stocks-column {
+    background-color: #f1f3f5;
+  }
+
+  .d2d-stocks-body {
+    background-color: #f8f9fa;
+  }
+
+  .d2d-stock-card {
+    cursor: default;
+  }
+
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  const CSRF_TOKEN = "{{ csrf_token }}";
+
+  (function () {
+    // SAFER: use string comparison so JS parses this even in editors
+    const IS_ADMIN_LIKE = "{{ is_admin_like|yesno:'true,false' }}" === "true";
+    const csrftoken = getCookie('csrftoken');
+
+    let draggedCard = null;
+    let currentSimRole = null;
+
+    document.addEventListener('DOMContentLoaded', function () {
+      initSimRole();
+      initDragAndDrop();
+      initApproveDecline();
+      initArchiveButtons();
+      recomputeCountsAndEmpty();
+    });
+
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+
+    function initSimRole() {
+      const select = document.getElementById('sim-role');
+      if (!select) {
+        currentSimRole = null;
+        return;
+      }
+
+      const saved = localStorage.getItem('bondking_sim_role') || '';
+      if (saved) {
+        for (const opt of select.options) {
+          if (opt.value === saved) {
+            opt.selected = true;
+            break;
+          }
+        }
+        currentSimRole = saved;
+      } else if (select.value) {
+        currentSimRole = select.value;
+      }
+
+      select.addEventListener('change', function () {
+        currentSimRole = this.value || null;
+        localStorage.setItem('bondking_sim_role', currentSimRole || '');
+      });
+    }
+
+    function initDragAndDrop() {
+      const board = document.getElementById('kanban-board');
+      if (!board) return;
+
+      // Delegate dragstart / dragend from cards
+      board.addEventListener('dragstart', function (e) {
+        const card = e.target.closest('.kanban-card');
+        if (!card) return;
+
+        const approvalStatus = card.dataset.approvalStatus;
+        if (approvalStatus === 'PENDING') {
+          // Pending cards cannot be dragged; must be approved/declined first
+          e.preventDefault();
+          return;
+        }
+
+        draggedCard = card;
+        card.classList.add('dragging');
+
+        try {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', card.dataset.drId || '');
+        } catch (err) {
+          // Some browsers may not support, safe to ignore
+        }
+
+        document.querySelectorAll('.kanban-column-body:not(.d2d-stocks-body)').forEach(col => {
+          col.classList.add('drop-allowed');
+        });
+      });
+
+      board.addEventListener('dragend', function (e) {
+        const card = e.target.closest('.kanban-card');
+        if (card) {
+          card.classList.remove('dragging');
+        }
+        draggedCard = null;
+        document.querySelectorAll('.kanban-column-body').forEach(col => {
+          col.classList.remove('drop-allowed', 'drop-hover');
+        });
+      });
+
+      // Column-level events
+      document.querySelectorAll('.kanban-column-body').forEach(col => {
+        col.addEventListener('dragover', function (e) {
+          if (!draggedCard) return;
+          e.preventDefault();
+          this.classList.add('drop-hover');
+        });
+
+        col.addEventListener('dragleave', function (e) {
+          this.classList.remove('drop-hover');
+        });
+        col.addEventListener('drop', function (e) {
+          if (!draggedCard) return;
+          e.preventDefault();
+          this.classList.remove('drop-hover');
+
+          const targetColumn = this.dataset.column;
+          const moveUrl = draggedCard.dataset.moveUrl;
+          if (!moveUrl || !targetColumn) return;
+
+          // ✅ snapshot the card before the async call
+          const card = draggedCard;
+
+          const formData = new FormData();
+          formData.append('target_column', targetColumn);
+          formData.append('notes', '');
+
+          if (IS_ADMIN_LIKE && currentSimRole) {
+            formData.append('sim_role', currentSimRole);
+          }
+
+          fetch(moveUrl, {
+            method: 'POST',
+            headers: {
+              'X-CSRFToken': csrftoken
+            },
+            body: formData
+          })
+            .then(response => {
+              if (!response.ok) {
+                return response.json().then(data => {
+                  throw new Error(data.error || 'Error moving DR.');
+                });
+              }
+              return response.json();
+            })
+            .then(data => {
+              if (!data.ok) {
+                throw new Error(data.error || 'Error moving DR.');
+              }
+
+              const newColumn = data.new_column;
+              const approvalStatus = data.approval_status;
+
+              // ✅ use the local card reference
+              this.appendChild(card);
+              card.dataset.currentColumn = newColumn;
+              refreshCardAppearance(card, approvalStatus);
+
+              recomputeCountsAndEmpty();
+            })
+            .catch(err => {
+              alert(err.message);
+            });
+        });
+      });
+    }
+
+    function initApproveDecline() {
+      document.addEventListener('click', function (e) {
+        const approveBtn = e.target.closest('.btn-approve');
+        const declineBtn = e.target.closest('.btn-decline');
+
+        if (approveBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const card = approveBtn.closest('.kanban-card');
+          if (!card) return;
+          handleApprove(card);
+          return;
+        }
+
+        if (declineBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const card = declineBtn.closest('.kanban-card');
+          if (!card) return;
+          handleDecline(card);
+          return;
+        }
+      });
+    }
+
+    function handleApprove(card) {
+      const url = card.dataset.approveUrl;
+      if (!url) return;
+
+      const currentColumn = card.dataset.currentColumn || '';
+      const formData = new FormData();
+      formData.append('notes', `Approved in ${currentColumn} as ${currentSimRole || 'actual role'}.`);
+
+      if (IS_ADMIN_LIKE && currentSimRole) {
+        formData.append('sim_role', currentSimRole);
+      }
+
+      fetch(url, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+        body: formData
+      })
+      .then(response => {
+        if (!response.ok) {
+          return response.json().then(data => {
+            throw new Error(data.error || 'Error approving DR.');
+          });
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (!data.ok) {
+          throw new Error(data.error || 'Error approving DR.');
+        }
+        refreshCardAppearance(card, data.approval_status);
+
+        // Remove approve/decline buttons
+        const btnRow = card.querySelector('.btn-approve')?.parentElement;
+        if (btnRow) btnRow.remove();
+
+        recomputeCountsAndEmpty();
+      })
+      .catch(err => {
+        alert(err.message);
+      });
+    }
+
+    function handleDecline(card) {
+      const url = card.dataset.declineUrl;
+      if (!url) return;
+
+      const currentColumn = card.dataset.currentColumn || '';
+      const formData = new FormData();
+      formData.append('notes', `Declined in ${currentColumn} as ${currentSimRole || 'actual role'}.`);
+
+      if (IS_ADMIN_LIKE && currentSimRole) {
+        formData.append('sim_role', currentSimRole);
+      }
+
+      fetch(url, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrftoken },
+        body: formData
+      })
+      .then(response => {
+        if (!response.ok) {
+          return response.json().then(data => {
+            throw new Error(data.error || 'Error declining DR.');
+          });
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (!data.ok) {
+          throw new Error(data.error || 'Error declining DR.');
+        }
+
+        const newColumn = data.column; // backend returns new current column
+        refreshCardAppearance(card, data.approval_status);
+
+        // Remove approve/decline buttons
+        const btnRow = card.querySelector('.btn-approve')?.parentElement;
+        if (btnRow) btnRow.remove();
+
+        if (newColumn) {
+          const targetBody = document.querySelector(
+            '.kanban-column-body[data-column="' + newColumn + '"]'
+          );
+          if (targetBody) {
+            targetBody.appendChild(card);
+            card.dataset.currentColumn = newColumn;
+          }
+        }
+
+        recomputeCountsAndEmpty();
+      })
+      .catch(err => {
+        alert(err.message);
+      });
+    }
+
+    function initArchiveButtons() {
+      document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.btn-archive');
+        if (!btn) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const card = btn.closest('.kanban-card');
+        if (!card) return;
+
+        const archiveUrl = card.dataset.archiveUrl;
+        if (!archiveUrl) return;
+
+        if (!confirm('Archive this DR? It will be removed from the Deposited column.')) {
+          return;
+        }
+
+        const formData = new FormData();
+
+        fetch(archiveUrl, {
+          method: 'POST',
+          headers: { 'X-CSRFToken': csrftoken },
+          body: formData
+        })
+        .then(response => {
+          if (!response.ok) {
+            return response.json().then(data => {
+              throw new Error(data.error || 'Error archiving DR.');
+            }).catch(() => {
+              // If response is not JSON (e.g. 403 with HTML), show generic error
+              throw new Error('Error archiving DR.');
+            });
+          }
+          return response.json();
+        })
+        .then(data => {
+          if (!data.ok) {
+            throw new Error('Error archiving DR.');
+          }
+          // Remove card from DOM
+          card.remove();
+          recomputeCountsAndEmpty();
+        })
+        .catch(err => {
+          alert(err.message);
+        });
+      });
+    }
+
+    function refreshCardAppearance(card, approvalStatus) {
+      card.dataset.approvalStatus = approvalStatus;
+
+      // Reset color classes
+      card.classList.remove('kanban-card-pending', 'kanban-card-declined');
+
+      // Look for an existing approval button row
+      let btnRow = card.querySelector('.kanban-approval-buttons');
+
+      if (approvalStatus === 'PENDING') {
+        // Style for pending
+        card.classList.add('kanban-card-pending');
+        card.setAttribute('draggable', 'false');
+
+        // If no buttons yet, create them
+        if (!btnRow) {
+          btnRow = document.createElement('div');
+          btnRow.className = 'd-flex justify-content-end gap-1 mb-2 kanban-approval-buttons';
+
+          const approveBtn = document.createElement('button');
+          approveBtn.type = 'button';
+          approveBtn.className = 'btn btn-success btn-sm btn-approve';
+          approveBtn.textContent = '✓';
+
+          const declineBtn = document.createElement('button');
+          declineBtn.type = 'button';
+          declineBtn.className = 'btn btn-danger btn-sm btn-decline';
+          declineBtn.textContent = '✕';
+
+          btnRow.appendChild(approveBtn);
+          btnRow.appendChild(declineBtn);
+
+          const cardBody = card.querySelector('.card-body');
+          if (cardBody) {
+            // Insert above the title (at the top of the body)
+            cardBody.insertBefore(btnRow, cardBody.firstChild);
+          }
+        }
+      } else {
+        // Not pending anymore → remove buttons if they exist
+        if (btnRow) {
+          btnRow.remove();
+        }
+        card.setAttribute('draggable', 'true');
+
+        if (approvalStatus === 'DECLINED') {
+          card.classList.add('kanban-card-declined');
+        }
+      }
+    }
+
+
+    function recomputeCountsAndEmpty() {
+      document.querySelectorAll('.kanban-column').forEach(col => {
+        const key = col.dataset.column;
+        const body = col.querySelector('.kanban-column-body');
+        const cards = body.querySelectorAll('.kanban-card');
+        const count = cards.length;
+        const badge = document.getElementById('count-' + key);
+        if (badge) {
+          badge.textContent = count;
+        }
+
+        let emptyDiv = body.querySelector('.kanban-empty');
+        if (count === 0) {
+          if (!emptyDiv) {
+            emptyDiv = document.createElement('div');
+            emptyDiv.className = 'kanban-empty text-muted small';
+            emptyDiv.textContent = 'No DRs here';
+            body.appendChild(emptyDiv);
+          }
+        } else if (emptyDiv) {
+          emptyDiv.remove();
+        }
+      });
+    }
+  })();
+</script>
+<script>
+document.addEventListener("click", function (e) {
+  const btn = e.target.closest(".btn-d2d-transactions");
+  if (!btn) return;
+
+  const drId = btn.dataset.drId;
+  const modalEl = document.getElementById("d2dTransactionsModal");
+  const modal = new bootstrap.Modal(modalEl);
+  const content = document.getElementById("d2d-transactions-content");
+  const archiveContainer = document.getElementById("d2d-archive-container");
+
+  content.innerHTML = `<div class="text-center text-muted">Loading…</div>`;
+  archiveContainer.innerHTML = "";
+
+  fetch(`/dr/${drId}/d2d-transactions/`)
+    .then(res => res.json())
+    .then(data => {
+      if (!data.ok) throw new Error("Failed to load");
+
+      let html = "";
+
+      data.items.forEach(item => {
+        const badgeClass =
+          item.remaining_qty <= 0 ? "bg-danger" :
+          item.remaining_qty <= 5 ? "bg-warning text-dark" :
+          "bg-success";
+
+        html += `
+          <div class="mb-3">
+            <button class="btn btn-light w-100 text-start"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#d2d-item-${item.product_name.replace(/\s+/g, '-')}"
+            >
+              <strong>${item.product_name}</strong>
+              <span class="badge ${badgeClass} float-end">
+                Remaining: ${item.remaining_qty}
+              </span>
+            </button>
+
+            <div class="collapse mt-2" id="d2d-item-${item.product_name.replace(/\s+/g, '-')}">
+              ${item.transactions.length === 0
+                ? `<div class="text-muted small p-2">No transactions yet</div>`
+                : `
+                <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>DR</th>
+                      <th>Client</th>
+                      <th>Date</th>
+                      <th class="text-end">Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${item.transactions.map(t => `
+                      <tr>
+                        <td>${t.dr_number}</td>
+                        <td>${t.client}</td>
+                        <td>${t.date}</td>
+                        <td class="text-end">${t.quantity}</td>
+                      </tr>
+                    `).join("")}
+                  </tbody>
+                </table>
+              `}
+            </div>
+          </div>
+        `;
+      });
+
+      content.innerHTML = html;
+
+      if (data.can_archive && data.is_top_management) {
+        archiveContainer.innerHTML = `
+          <button class="btn btn-danger" id="d2d-archive-btn">
+            Archive D2D Stock
+          </button>
+        `;
+
+        document.getElementById("d2d-archive-btn").onclick = function () {
+          if (!confirm("Archive this D2D Stock?")) return;
+
+          fetch(`/dr/${drId}/archive/`, {
+            method: "POST",
+            headers: {
+              "X-CSRFToken": getCookie("csrftoken")
+            }
+          }).then(() => location.reload());
+        };
+      }
+
+    })
+    .catch(err => {
+      content.innerHTML =
+        `<div class="text-danger text-center">Failed to load transactions</div>`;
+    });
+
+  modal.show();
+});
+</script>
+
+<!-- D2D STOCKS TRANSACTIONS MODAL -->
+<div class="modal fade" id="d2dTransactionsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">D2D Stock Transactions</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <div id="d2d-transactions-content">
+          <div class="text-center text-muted">
+            Loading…
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer justify-content-between">
+        <div id="d2d-archive-container"></div>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          Close
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{% endblock %}

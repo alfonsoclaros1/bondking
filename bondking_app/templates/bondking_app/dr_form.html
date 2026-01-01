@@ -1,0 +1,792 @@
+{% extends "base.html" %}
+{% load form_extras %}
+{% load static %}
+{% load form_extras %}
+
+
+{% block content %}
+<style>
+input[name$="-id"] {
+  display: none;
+}
+</style>
+
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">
+      {% if is_create %}New Delivery Receipt{% else %}Delivery Receipt {{ dr.dr_number }}{% endif %}
+    </h2>
+    <span class="badge bg-secondary text-uppercase">
+      Stage: {{ stage }}
+    </span>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+
+    {% if form.errors or form.non_field_errors or formset.total_error_count or formset.non_form_errors %}
+      <div class="alert alert-danger mb-3">
+
+        <strong>There were problems saving this Delivery Receipt:</strong>
+
+        <ul class="mt-2 small">
+
+          <!-- FORM FIELD ERRORS -->
+          {% for field, errors in form.errors.items %}
+            {% for error in errors %}
+              <li><strong>{{ field|capfirst }}:</strong> {{ error }}</li>
+            {% endfor %}
+          {% endfor %}
+
+          <!-- FORM NON-FIELD ERRORS -->
+          {% for error in form.non_field_errors %}
+            <li>{{ error }}</li>
+          {% endfor %}
+
+          <!-- FORMSET ROW ERRORS -->
+          {% for f in formset.forms %}
+            {% if f.errors %}
+              <li>
+                <strong>Item Row {{ forloop.counter }}:</strong>
+                <ul>
+                  {% for field, errors in f.errors.items %}
+                    {% for error in errors %}
+                      <li>{{ field|capfirst }}: {{ error }}</li>
+                    {% endfor %}
+                  {% endfor %}
+                </ul>
+              </li>
+            {% endif %}
+          {% endfor %}
+
+          <!-- FORMSET NON-FIELD ERRORS -->
+          {% for error in formset.non_form_errors %}
+            <li>{{ error }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    
+
+<div class="row g-4">
+{% if not is_create %}
+  <!-- LEFT SIDEBAR: DR LIFECYCLE -->
+  <div class="col-lg-3">
+    <div class="card shadow-sm sticky-top" style="top: 1rem;">
+      <div class="card-header py-2">
+        <strong>DR Lifecycle</strong>
+      </div>
+
+      <ul class="list-group list-group-flush small po-lifecycle">
+        {% for step in dr_flow %}
+          <li class="list-group-item d-flex align-items-center
+            {% if step.is_current %} po-step-active {% endif %}
+            {% if step.is_done %} po-step-complete {% endif %}
+            {% if approval_status == 'DECLINED' and step.is_current %} po-step-declined {% endif %}
+          ">
+            <span class="me-2 po-step-icon">
+              {% if step.is_done %}✓{% elif step.is_current %}●{% else %}○{% endif %}
+            </span>
+            <span class="po-step-label">{{ step.label }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <!-- RIGHT MAIN CONTENT -->
+  <div class="col-lg-9">
+    <!-- NEXT STEP CARD -->
+{% if not dr.is_archived and stage != "NEW_DR" %}
+    <div class="card mb-3
+      {% if approval_status == 'DECLINED' %}border-danger
+      {% elif approval_status == 'PENDING' %}border-warning
+      {% else %}border-secondary{% endif %}
+    ">
+
+      <div class="card-body">
+
+        <h6 class="mb-1">Next Step</h6>
+
+        {# ===== STATUS MESSAGE ===== #}
+
+        {% if stage == "DEPOSITED" %}
+          <p class="small text-muted mb-2">
+            This Delivery Receipt has completed its lifecycle.
+          </p>
+
+        {% elif approval_status == 'DECLINED' %}
+          <p class="small text-danger mb-2">
+            This Delivery Receipt was declined and requires revision before proceeding.
+          </p>
+
+        {% elif missing_fields %}
+          <p class="small text-muted mb-2">
+            Reminder: Fill up
+            <strong>{{ missing_fields|join:", "|humanize_step }}</strong>
+            before moving to
+            <strong>{{ next_step|humanize_step }}</strong>.
+          </p>
+
+        {% else %}
+          <p class="small text-muted mb-2">
+            Move this Delivery Receipt to
+            <strong>{{ next_step|humanize_step }}</strong>.
+          </p>
+        {% endif %}
+
+        {# ===== ACTION BUTTONS ===== #}
+
+        <div class="d-flex gap-2">
+
+          {% if can_approve %}
+            <button name="action" value="approve" class="btn btn-sm btn-success">
+              Approve
+            </button>
+            <button name="action" value="decline" class="btn btn-sm btn-danger">
+              Decline
+            </button>
+          {% endif %}
+
+            {% if stage == "DEPOSITED" %}
+            <button
+              type="button"
+              class="btn btn-sm btn-success"
+              data-bs-toggle="modal"
+              data-bs-target="#archiveModal"
+            >
+              Archive
+            </button>
+
+
+          {% elif not missing_fields and approval_status == 'APPROVED' and next_step %}
+            <a href="{{ kanban_url }}" class="btn btn-sm btn-outline-primary">
+              Go to Kanban
+            </a>
+          {% endif %}
+
+        </div>
+
+      </div>
+    </div>
+        {% endif %}
+        {% endif %}
+
+
+
+
+
+    <div class="row g-4">
+      <!-- LEFT: Branding + Client info -->
+      <div class="col-lg-7">
+        <div class="card shadow-sm mb-3">
+          <div class="card-body">
+              {% if dr.payment_status == "DEPOSITED" %}
+                <span class="badge bg-success">Completed</span>
+              {% endif %}
+            <div class="d-flex justify-content-between align-items-center mb-3">
+
+
+              <div class="fw-bold fs-4 text-primary">
+                BONDKING
+              </div>
+              
+              <!-- placeholder logo, change src if you have one -->
+              <div class="text-muted small">
+                Delivery Receipt
+              </div>
+            </div>
+
+            <!-- Client selection + quick add -->
+            <div class="mb-3">
+              <label class="form-label">{{ form.client.label }} <span class="text-danger">*</span></label>
+              <div class="d-flex gap-2">
+                {{ form.client|add_class:"form-select client-select" }}
+                <a href="{% url 'client-create' %}" target="_blank" class="btn btn-outline-secondary btn-sm">
+                  + New Client
+                </a>
+              </div>
+              {% if form.client.errors %}
+                <div class="text-danger small">{{ form.client.errors }}</div>
+              {% endif %}
+            </div>
+
+            <!-- Bill / Shipping Address & Invoice Address -->
+            <div class="row">
+              <div class="col-md-6">
+                <div class="border rounded p-3 mb-3 bg-light">
+                  <div class="fw-semibold text-warning mb-2">Bill / Shipping Address</div>
+                  <div class="small text-muted mb-1">Name:</div>
+                  <div id="client-name" class="fw-semibold mb-2">—</div>
+
+                  <div class="small text-muted mb-1">Contact No.:</div>
+                  <div id="client-contact" class="mb-2">—</div>
+
+                  <div class="small text-muted mb-1">Contact Person:</div>
+                  <div id="client-contact-person" class="mb-2">—</div>
+
+                  <div class="small text-muted mb-1">Delivery Address:</div>
+                  <div id="client-address" class="mb-2">—</div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="border rounded p-3 mb-3 bg-light">
+                  <div class="fw-semibold text-warning mb-2">Invoice Address</div>
+
+                  <div class="small text-muted mb-1">Name:</div>
+                  <div class="fw-semibold mb-2">Bondking</div>
+
+                  <div class="small text-muted mb-1">Contact No.:</div>
+                  <div class="mb-2">(add office number here)</div>
+
+                  <div class="small text-muted mb-1">Contact Person:</div>
+                  <div class="mb-2">(e.g. Accounting Dept.)</div>
+
+                  <div class="small text-muted mb-1">Delivery Address:</div>
+                  <div class="mb-2">(e.g. Company main office address)</div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ITEMS TABLE -->
+        <div class="card shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="mb-0">Items</h5>
+              <small class="text-muted">Item, Description, Qty, Unit Price, Total</small>
+            </div>
+
+            {{ formset.management_form }}
+              {{ f.id }}  <!-- hidden field; REQUIRED -->
+            <div class="table-responsive">
+              <table class="table align-middle table-sm">
+                <thead class="table-light">
+                  <tr>
+                    <th style="width: 18%">Item</th>
+                    <th style="width: 32%">Description</th>
+                    <th style="width: 10%">Qty</th>
+                    <th style="width: 15%">Unit Price</th>
+                    <th style="width: 15%">Total</th>
+                    <th style="width: 10%"></th>
+                  </tr>
+                </thead>
+                <tbody id="dr-items-body">
+                  {% for f in formset.forms %}
+                    {{ f.id }}  <!-- hidden field; REQUIRED -->
+                    <tr class="dr-item-row">
+                      <td>
+                        {{ f.product }}
+                        {% if f.product.errors %}
+                          <div class="text-danger small">{{ f.product.errors|join:", " }}</div>
+                        {% endif %}
+                      </td>
+                      <td>
+                        {{ f.description }}
+                        {% if f.description.errors %}
+                          <div class="text-danger small">{{ f.description.errors|join:", " }}</div>
+                        {% endif %}
+                      </td>
+                      <td>
+                        {{ f.quantity }}
+                        {% if f.quantity.errors %}
+                          <div class="text-danger small">{{ f.quantity.errors|join:", " }}</div>
+                        {% endif %}
+                      </td>
+                      <td>
+                        {{ f.unit_price }}
+                        {% if f.unit_price.errors %}
+                          <div class="text-danger small">{{ f.unit_price.errors|join:", " }}</div>
+                        {% endif %}
+                      </td>
+                      <td class="line-total-cell">
+                        {% if f.instance.pk %}
+                          {{ f.instance.line_total }}
+                        {% else %}
+                          —
+                        {% endif %}
+                      </td>
+                      <td>
+                        {% if formset.can_delete %}
+                          {% if f.instance.pk or not forloop.last %}
+                            <label class="form-check small">
+                              {{ f.DELETE }} Remove
+                            </label>
+                          {% endif %}
+                        {% endif %}
+                      </td>
+                    </tr>
+
+                    {% if f.non_field_errors %}
+                      <tr>
+                        <td colspan="6">
+                          <div class="text-danger small">
+                            {% for err in f.non_field_errors %}
+                              • {{ err }}<br>
+                            {% endfor %}
+                          </div>
+                        </td>
+                      </tr>
+                    {% endif %}
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="d-flex justify-content-end">
+              <div class="text-end">
+                <div class="fw-semibold">Subtotal:</div>
+                <div id="subtotal-display" class="fs-5 fw-bold">₱0.00</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Order details / comments -->
+      <div class="col-lg-5">
+        <div class="card shadow-sm mb-3">
+          <div class="card-body">
+
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <label class="form-label">{{ form.date_of_order.label }}</label>
+                {{ form.date_of_order|add_class:"form-control" }}
+              </div>
+              <div class="col-6">
+                <label class="form-label">{{ form.dr_number.label }}</label>
+                {{ form.dr_number|add_class:"form-control" }}
+              </div>
+            </div>
+
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <label class="form-label">{{ form.payment_method.label }}</label>
+                {{ form.payment_method|add_class:"form-select" }}
+              </div>
+              <div class="col-6">
+                <label class="form-label">{{ form.delivery_method.label }}</label>
+                {{ form.delivery_method|add_class:"form-select" }}
+              </div>
+            </div>
+            <!-- SOURCE DR (Door to Door only) -->
+            {% if form.source_dr %}
+            <div class="row g-2 mb-3" id="source-dr-row" style="display:none;">
+              <div class="col-12">
+                <label class="form-label">
+                  {{ form.source_dr.label }}
+                  <span class="text-danger">*</span>
+                </label>
+                {{ form.source_dr|add_class:"form-select" }}
+                {% if form.source_dr.errors %}
+                  <div class="text-danger small">{{ form.source_dr.errors }}</div>
+                {% endif %}
+              </div>
+            </div>
+            {% endif %}
+
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <label class="form-label">{{ form.agent.label }}</label>
+                {{ form.agent|add_class:"form-select" }}
+              </div>
+
+              <div class="col-6">
+                <label class="form-label">Delivery Date</label>
+
+                {% if stage == "FOR_DELIVERY" %}
+                    {{ form.date_of_delivery|add_class:"form-control" }}
+
+                    <!-- Date limits -->
+                    <script>
+                      const dInput = document.querySelector('input[name="date_of_delivery"]');
+                      if (dInput) {
+                        const today = new Date();
+                        const max = new Date();
+                        max.setDate(today.getDate() + 3);
+                        dInput.min = today.toISOString().split("T")[0];
+                        dInput.max = max.toISOString().split("T")[0];
+                      }
+                    </script>
+
+                    <!-- Small red text showing due date -->
+                    <small class="text-danger d-block mt-1">
+                      {% if dr.payment_due %}
+                          Due date is: {{ dr.payment_due|date:"F j, Y" }}
+                      {% else %}
+                          {% now "U" as now_ts %}
+                          {% with now_ts|add:"259200"|date:"F j, Y" as future_due %}
+                              Due date will be: {{ future_due }}
+                          {% endwith %}
+                      {% endif %}
+                    </small>
+
+                {% else %}
+                    {{ form.date_of_delivery|add_class:"form-control" }}
+                {% endif %}
+              </div>
+
+            </div>
+
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <label class="form-label">Payment Due</label>
+                {{ form.payment_due|add_class:"form-control" }}
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Payment Details</label>
+              {{ form.payment_details|add_class:"form-control" }}
+            </div>
+            <div class="row g-2 mt-3">
+              <div class="col-6">
+                {{ form.sales_invoice_no.label_tag }}
+                {{ form.sales_invoice_no }}
+              </div>
+
+              <div class="col-6">
+                {{ form.deposit_slip_no.label_tag }}
+                {{ form.deposit_slip_no }}
+              </div>
+            </div>
+            <div class="mb-3 mt-3">
+              {{ form.proof_of_delivery.label_tag }}
+
+              {% if stage == "DELIVERED" %}
+                {{ form.proof_of_delivery }}
+                <small class="text-muted d-block">
+                  Upload or replace proof of delivery.
+                </small>
+              {% endif %}
+
+              {% if form.instance.pk and form.instance.proof_of_delivery and form.instance.proof_of_delivery.name %}
+                <div class="mt-2">
+                  <img
+                    src="{{ form.instance.proof_of_delivery.url }}"
+                    class="img-thumbnail"
+                    style="max-height: 200px; cursor:pointer"
+                    data-bs-toggle="modal"
+                    data-bs-target="#podModal"
+                  >
+                </div>
+              {% endif %}
+            </div>
+
+
+            <div class="mb-3">
+              <label class="form-label">Comments / Special Instructions</label>
+              {{ form.remarks|add_class:"form-control" }}
+            </div>
+
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-end">
+          <button type="submit" name="action" value="save" class="btn btn-primary px-4">
+            Save
+          </button>
+        </div>
+        {% if not is_create and dr.approval_status == "APPROVED" %}
+          <a href="{% url 'dr-print' dr.id %}" target="_blank" class="btn btn-outline-secondary btn-sm">
+            🖨 Print DR
+          </a>
+        {% endif %}
+      </div>
+    </div>
+            {% if not is_create and updates %}
+          <div class="card shadow-sm mt-4">
+            <div class="card-body">
+
+              <h5 class="mb-3">Update History</h5>
+
+              <ul class="list-group small">
+                {% for u in updates %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  <div>
+                    <strong>{{ u.timestamp|date:"Y-m-d H:i" }}</strong><br>
+                    <span class="text-muted">by {{ u.user.get_full_name|default:u.user.username }}</span>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary btn-sm"
+                    data-bs-toggle="modal"
+                    data-bs-target="#updateModal-{{ u.id }}"
+                  >
+                    View
+                  </button>
+                </li>
+
+                <!-- Modal -->
+                <div class="modal fade" id="updateModal-{{ u.id }}" tabindex="-1">
+                  <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h6 class="modal-title">Update Details</h6>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                      </div>
+                      <div class="modal-body">
+                        <div class="mb-2">
+                          <strong>Date:</strong> {{ u.timestamp|date:"Y-m-d H:i" }}<br>
+                          <strong>User:</strong> {{ u.user.get_full_name|default:u.user.username }}
+                        </div>
+                        <div class="mb-2">
+                          <strong>System Message:</strong><br>
+                          <div class="text-muted">{{ u.system_update }}</div>
+                        </div>
+                        {% if u.user_notes %}
+                        <div class="mb-2">
+                          <strong>User Notes:</strong><br>
+                          <div>{{ u.user_notes }}</div>
+                        </div>
+                        {% endif %}
+                      </div>
+                      <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                          Close
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          {% endif %}
+      </div> <!-- /col-lg-9 -->
+</div>   <!-- /row -->
+
+
+  </form>
+</div>
+
+<!-- PROOF OF DELIVERY MODAL -->
+ <div class="modal fade" id="podModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Proof of Delivery</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center">
+        {% if form.instance.pk and form.instance.proof_of_delivery and form.instance.proof_of_delivery.name %}
+        <img src="{{ form.instance.proof_of_delivery.url }}" class="img-fluid rounded">
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ARCHIVE CONFIRMATION MODAL -->
+<div class="modal fade" id="archiveModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">Archive Delivery Receipt</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        This will archive this Delivery Receipt and remove it from active workflows.
+        <br><br>
+        This action cannot be undone.
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          Cancel
+        </button>
+
+        <form method="post" action="" class="m-0 p-0">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="archive">
+          <button type="submit" class="btn btn-success">
+            Archive
+          </button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function formatPeso(value) {
+  return "₱" + value.toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  const deliveryMethodSelect = document.querySelector('select[name="delivery_method"]');
+  const sourceDrRow = document.getElementById("source-dr-row");
+  const sourceDrSelect = document.querySelector('select[name="source_dr"]');
+
+  function toggleSourceDr() {
+    if (!deliveryMethodSelect || !sourceDrRow) return;
+
+    const isD2D = deliveryMethodSelect.value === "DOOR_TO_DOOR";
+    sourceDrRow.style.display = isD2D ? "" : "none";
+
+    if (!isD2D && sourceDrSelect) sourceDrSelect.value = "";
+  }
+
+  if (deliveryMethodSelect) {
+    deliveryMethodSelect.addEventListener("change", toggleSourceDr);
+    toggleSourceDr();
+  }
+
+  // IMPORTANT: bind source_dr change here (after DOM exists)
+  if (sourceDrSelect) {
+    sourceDrSelect.addEventListener("change", function () {
+      const drId = this.value;
+      if (!drId) return;
+
+      console.log("Source DR selected:", drId);
+
+      fetch(`/dr/${drId}/d2d-transactions/`)
+        .then(res => res.json())
+        .then(data => {
+          if (!data.ok) {
+            console.warn("D2D API returned ok:false");
+            return;
+          }
+
+          const rows = document.querySelectorAll(".dr-item-row");
+          data.items.forEach((item, idx) => {
+            const row = rows[idx];
+            if (!row) return;
+
+            const product = row.querySelector('select[name$="-product"]');
+            const qty = row.querySelector('input[name$="-quantity"]');
+            const price = row.querySelector('input[name$="-unit_price"]');
+            const desc = row.querySelector('input[name$="-description"]');
+
+            if (!product || !qty || !price) return;
+
+            product.value = String(item.product_id);
+            qty.value = String(item.remaining_qty);
+            price.value = String(item.unit_price);
+            if (desc) desc.value = item.description || "";
+
+            // 🔁 trigger recompute
+            qty.dispatchEvent(new Event("input", { bubbles: true }));
+            price.dispatchEvent(new Event("input", { bubbles: true }));
+          });
+
+          console.log("Autofill done.");
+        })
+        .catch(err => console.error("D2D autofill failed:", err));
+    });
+  }
+});
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const clientSelect = document.querySelector(".client-select");
+  const clientDetailUrlTemplate = "{% url 'client-detail-api' 9999 %}";
+
+  function getClientUrl(id) {
+    return clientDetailUrlTemplate.replace("9999", id);
+  }
+
+  function clearClientDisplay() {
+    document.getElementById("client-name").textContent = "—";
+    document.getElementById("client-contact").textContent = "—";
+    document.getElementById("client-contact-person").textContent = "—";
+    document.getElementById("client-address").textContent = "—";
+  }
+
+  if (!clientSelect) return;
+
+  clientSelect.addEventListener("change", function () {
+    const id = this.value;
+    if (!id) return clearClientDisplay();
+
+    fetch(getClientUrl(id))
+      .then(r => r.json())
+      .then(data => {
+        const name = data.name_of_owner || data.company_name || "—";
+        document.getElementById("client-name").textContent = name;
+        document.getElementById("client-contact").textContent = data.contact_number || "—";
+        document.getElementById("client-address").textContent =
+          (data.full_address  || "—");
+        document.getElementById("client-contact-person").textContent = name;
+      })
+      .catch(() => clearClientDisplay());
+  });
+
+  if (clientSelect.value) clientSelect.dispatchEvent(new Event("change"));
+});
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const productDetailUrlTemplate = "{% url 'product-detail-api' 9999 %}";
+  function getProductUrl(id) { return productDetailUrlTemplate.replace("9999", id); }
+
+  function updateSubtotal() {
+    let total = 0;
+    document.querySelectorAll(".line-total-cell").forEach(cell => {
+      const text = cell.textContent.replace(/[₱,]/g, "");
+      const val = parseFloat(text);
+      if (!isNaN(val)) total += val;
+    });
+    const subt = document.getElementById("subtotal-display");
+    if (subt) subt.textContent = formatPeso(total);
+  }
+
+  function setupItemRow(row) {
+    const productSelect = row.querySelector('select[name$="-product"]');
+    const descInput = row.querySelector('input[name$="-description"]');
+    const qtyInput = row.querySelector('input[name$="-quantity"]');
+    const priceInput = row.querySelector('input[name$="-unit_price"]');
+    const totalCell = row.querySelector(".line-total-cell");
+
+    function updateTotal() {
+      const q = parseFloat(qtyInput?.value || "0");
+      const p = parseFloat(priceInput?.value || "0");
+      const t = q * p;
+      if (totalCell) totalCell.textContent = t > 0 ? formatPeso(t) : "—";
+      updateSubtotal();
+    }
+
+    if (productSelect) {
+      productSelect.addEventListener("change", function () {
+        const id = this.value;
+        if (!id) return;
+        fetch(getProductUrl(id))
+          .then(r => r.json())
+          .then(data => {
+            if (descInput && !descInput.value) descInput.value = data.name || "";
+            if (priceInput && !priceInput.value && data.default_unit_price !== null) {
+              priceInput.value = data.default_unit_price;
+            }
+            updateTotal();
+          })
+          .catch(() => {});
+      });
+    }
+
+    if (qtyInput) qtyInput.addEventListener("input", updateTotal);
+    if (priceInput) priceInput.addEventListener("input", updateTotal);
+    updateTotal();
+  }
+
+  document.querySelectorAll(".dr-item-row").forEach(setupItemRow);
+  updateSubtotal();
+});
+</script>
+
+{% endblock %}

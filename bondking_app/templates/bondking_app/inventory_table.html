@@ -1,0 +1,391 @@
+{% extends "base.html" %}
+{% block title %}Inventory Table{% endblock %}
+{% block content %}
+<div class="container-fluid py-3">
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+    <h4 class="mb-0">Inventory</h4>
+
+    {% if is_logistics or is_top_management %}
+        <a href="{% url 'inventory-new' %}" class="btn btn-primary btn-sm">
+        + New Issuance
+        </a>
+    {% endif %}
+    </div>
+
+
+  <!-- =======================
+       SNAPSHOT
+  ======================= -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-header fw-semibold">Inventory Summary</div>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Item</th>
+            <th>WH</th>
+            <th>HQ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in snapshot %}
+          <tr>
+            <td>{{ s.product.name }}</td>
+            <td>{{ s.wh_stock }}</td>
+            <td class="{% if s.hq_stock <= 0 %}text-danger{% elif s.hq_stock <= 5 %}text-warning{% endif %}">
+              {{ s.hq_stock }}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- =======================
+       FILTERS
+  ======================= -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <form method="get" class="row g-2 align-items-end">
+
+        <div class="col-md-3">
+          <label class="form-label small text-muted">Issuance Type</label>
+            <div class="dropdown">
+            <button
+                class="form-select form-select-sm text-start"
+                type="button"
+                data-bs-toggle="dropdown"
+            >
+                Issuance Type
+            </button>
+
+            <div class="dropdown-menu p-2" style="min-width: 220px;">
+                <div class="form-check">
+                <input class="form-check-input select-all" type="checkbox" data-target="type">
+                <label class="form-check-label fw-semibold">Select All</label>
+                </div>
+
+                <hr class="my-1">
+
+                <div class="form-check">
+                <input class="form-check-input filter-checkbox"
+                        type="checkbox"
+                        name="type"
+                        value="TF_TO_WH"
+                        data-group="type"
+                        {% if "TF_TO_WH" in selected.types %}checked{% endif %}>
+                <label class="form-check-label">TF → WH</label>
+                </div>
+
+                <div class="form-check">
+                <input class="form-check-input filter-checkbox"
+                        type="checkbox"
+                        name="type"
+                        value="WH_TO_HQ"
+                        data-group="type"
+                        {% if "WH_TO_HQ" in selected.types %}checked{% endif %}>
+                <label class="form-check-label">WH → HQ</label>
+                </div>
+
+                <div class="form-check">
+                <input class="form-check-input filter-checkbox"
+                        type="checkbox"
+                        name="type"
+                        value="DR"
+                        data-group="type"
+                        {% if "DR" in selected.types %}checked{% endif %}>
+                <label class="form-check-label">Delivery Receipts</label>
+                </div>
+            </div>
+            </div>
+
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small text-muted">Item</label>
+            <div class="dropdown">
+            <button
+                class="form-select form-select-sm text-start"
+                type="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false"
+            >
+                Item
+            </button>
+
+            <div class="dropdown-menu p-2" style="min-width: 260px; max-height: 300px; overflow-y: auto;">
+                <div class="form-check">
+                <input class="form-check-input select-all" type="checkbox" data-target="product">
+                <label class="form-check-label fw-semibold">Select All</label>
+                </div>
+
+                <hr class="my-1">
+
+                {% for p in products %}
+                <div class="form-check">
+                <input
+                    class="form-check-input filter-checkbox"
+                    type="checkbox"
+                    name="product"
+                    value="{{ p.id }}"
+                    data-group="product"
+                    {% if p.id|stringformat:"s" in selected.products %}checked{% endif %}
+                >
+                <label class="form-check-label">
+                    {{ p.name }}
+                </label>
+                </div>
+                {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label small text-muted">Start Date</label>
+          <input type="date" name="start_date" class="form-control form-control-sm" value="{{ selected.start_date }}">
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label small text-muted">End Date</label>
+          <input type="date" name="end_date" class="form-control form-control-sm" value="{{ selected.end_date }}">
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label small text-muted">Sort By</label>
+          <select name="sort_by" class="form-select form-select-sm">
+            <option value="date_desc" {% if sort_by == "date_desc" %}selected{% endif %}>Date (Newest)</option>
+            <option value="date_asc" {% if sort_by == "date_asc" %}selected{% endif %}>Date (Oldest)</option>
+          </select>
+        </div>
+
+        <div class="col-12 mt-2">
+          <div class="d-flex gap-2 align-items-center">
+            <button type="submit" class="btn btn-sm btn-primary">Apply Filters</button>
+            <a href="{% url 'inventory-table' %}" class="btn btn-sm btn-outline-secondary">Reset</a>
+
+            <div class="form-check ms-2">
+              <input class="form-check-input" type="checkbox" name="show_cancelled" value="1" {% if show_cancelled %}checked{% endif %}>
+              <label class="form-check-label small text-muted">Show Cancelled</label>
+            </div>
+
+            <a href="?{{ request.GET.urlencode }}&export=1" class="btn btn-sm btn-outline-success ms-auto">
+              Export Excel
+            </a>
+          </div>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <!-- =======================
+       TABLE
+  ======================= -->
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+          <tr>
+            <th>Date</th>
+            <th>Type</th>
+            <th>Reference</th>
+            <th>Item</th>
+            <th class="text-end">Qty</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr class="
+            {% if row.is_cancelled %}table-danger
+            {% elif row.is_pending %}table-warning
+            {% elif forloop.counter0|divisibleby:2 %}table-light
+            {% endif %}
+          ">
+            <td>{{ row.date|date:"Y-m-d" }}</td>
+            <td>{{ row.type_label }}</td>
+            <td class="fw-semibold">
+              {% if row.parent_type == "ISSUANCE" %}
+                <a href="{% url 'inventory-edit' row.parent_id %}" class="text-decoration-none">
+                  {{ row.ref }}
+                </a>
+              {% elif row.parent_type == "DR" %}
+                <a href="{% url 'dr-edit' row.parent_id %}" class="text-decoration-none">
+                  {{ row.ref }}
+                </a>
+              {% else %}
+                {{ row.ref }}
+              {% endif %}
+            </td>
+            <td>{{ row.product.name }}</td>
+            <td class="text-end">{{ row.qty }}</td>
+            <td>{{ row.from }}</td>
+            <td>
+              {% if row.parent_type == "DR" %}
+                <button
+                  type="button"
+                  class="btn btn-link p-0 text-decoration-none btn-client"
+                  data-client-id="{{ row.to_client_id }}"
+                  data-client-name="{{ row.to_client_name }}"
+                >
+                  {{ row.to }}
+                </button>
+              {% else %}
+                {{ row.to }}
+              {% endif %}
+            </td>
+
+            <td>
+              {% if row.is_cancelled %}Cancelled
+              {% elif row.is_pending %}Pending
+              {% else %}Approved
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if row.parent_type == "ISSUANCE" and row.is_pending %}
+                {% if can_approve_inventory %}
+                  <a href="{% url 'inventory-approve' row.parent_id %}"
+                    class="btn btn-sm btn-success"
+                    title="Approve issuance">
+                    ✔
+                  </a>
+
+                  <a href="{% url 'inventory-decline' row.parent_id %}"
+                    class="btn btn-sm btn-danger"
+                    title="Decline issuance">
+                    ✖
+                  </a>
+                {% else %}
+                  <span class="text-muted small">Awaiting approval</span>
+                {% endif %}
+              {% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="9" class="text-center text-muted py-4">No inventory movements found.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+<!-- Client modal -->
+<div class="modal fade" id="clientModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="clientModalTitle">Client</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="clientModalBody">
+        <div class="text-muted">Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+tr.table-danger td {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+</style>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+  // Handle Select All toggles
+  document.querySelectorAll(".select-all").forEach(selectAll => {
+    selectAll.addEventListener("change", function () {
+      const target = this.dataset.target;
+      document
+        .querySelectorAll(`.filter-checkbox[data-group="${target}"]`)
+        .forEach(cb => cb.checked = this.checked);
+    });
+  });
+
+  // Auto-update Select All checkbox state
+  document.querySelectorAll(".filter-checkbox").forEach(cb => {
+    cb.addEventListener("change", function () {
+      const group = this.dataset.group;
+      const all = document.querySelectorAll(`.filter-checkbox[data-group="${group}"]`);
+      const checked = document.querySelectorAll(`.filter-checkbox[data-group="${group}"]:checked`);
+      const selectAll = document.querySelector(`.select-all[data-target="${group}"]`);
+
+      if (selectAll) {
+        selectAll.checked = all.length === checked.length;
+      }
+    });
+  });
+
+});
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const checkbox = document.querySelector('input[name="show_cancelled"]');
+  if (!checkbox) return;
+
+  checkbox.addEventListener("change", function () {
+    this.closest("form").submit();
+  });
+});
+</script>
+<script>
+document.addEventListener("click", function(e) {
+
+  /* =======================
+     CLIENT MODAL
+     ======================= */
+  const clientBtn = e.target.closest(".btn-client");
+  if (clientBtn) {
+    const clientId = clientBtn.dataset.clientId;
+    const clientName = clientBtn.dataset.clientName;
+
+    const modalEl = document.getElementById("clientModal");
+    const modal = new bootstrap.Modal(modalEl);
+
+    document.getElementById("clientModalTitle").textContent = clientName;
+    const body = document.getElementById("clientModalBody");
+    body.innerHTML = `<div class="text-muted">Loading…</div>`;
+
+    fetch(`/api/clients/${clientId}/`)
+      .then(r => r.json())
+      .then(data => {
+        body.innerHTML = `
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="small text-muted">Company</div>
+              <div class="fw-semibold">${data.company_name || "—"}</div>
+            </div>
+            <div class="col-md-6">
+              <div class="small text-muted">Owner</div>
+              <div>${data.name_of_owner || "—"}</div>
+            </div>
+            <div class="col-md-6">
+              <div class="small text-muted">Contact</div>
+              <div>${data.contact_number || "—"}</div>
+            </div>
+            <div class="col-md-6">
+              <div class="small text-muted">City</div>
+              <div>${data.full_address || "—"}</div>
+            </div>
+          </div>
+        `;
+      })
+      .catch(() => {
+        body.innerHTML = `<div class="text-danger">Failed to load client details.</div>`;
+      });
+
+    modal.show();
+    return;
+  }
+});
+</script>
+{% endblock %}

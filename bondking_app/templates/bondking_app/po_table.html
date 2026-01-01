@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+{% load static %}
+{% load user_groups %}
+{% load humanize %}
+{% block title %}Purchase Orders Table{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <!-- Header -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Purchase Orders</h4>
+    <div class="d-flex gap-2">
+      <a href="{% url 'po-create' %}" class="btn btn-primary btn-sm">New PO</a>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <form method="get" class="row g-2 align-items-end">
+
+        <div class="col-md-3">
+          <label class="form-label small text-muted">Paid To</label>
+          <div class="position-relative">
+            <input
+                type="text"
+                class="form-control form-control-sm"
+                id="paid-to-search"
+                placeholder="Search payee…"
+                autocomplete="off"
+                value="{{ selected.paid_to }}"
+            >
+
+            <input
+                type="hidden"
+                name="paid_to"
+                id="paid-to-value"
+                value="{{ selected.paid_to }}"
+            >
+
+            <div
+                id="paid-to-suggestions"
+                class="list-group position-absolute w-100 shadow-sm"
+                style="z-index: 1050; display: none; max-height: 240px; overflow-y: auto;"
+            ></div>
+
+            <!-- Preload Paid To values -->
+            <script type="application/json" id="paid-to-data">
+                [
+                {% for p in paid_to_values %}
+                    "{{ p|escapejs }}"{% if not forloop.last %},{% endif %}
+                {% endfor %}
+                ]
+            </script>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small text-muted">Prepared By</label>
+          <select name="prepared_by" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for u in users %}
+              <option value="{{ u.id }}"
+                {% if selected.prepared_by|stringformat:"s" == u.id|stringformat:"s" %}selected{% endif %}>
+                {{ u.get_full_name|default:u.username }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small text-muted">Status</label>
+          <select name="status" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for s in statuses %}
+              <option value="{{ s }}" {% if selected.status == s %}selected{% endif %}>
+                {{ s|title }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small text-muted">Approval Status</label>
+          <select name="approval_status" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for val,label in approval_statuses %}
+              <option value="{{ val }}" {% if selected.approval_status == val %}selected{% endif %}>
+                {{ label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small text-muted">Start Date</label>
+          <input type="date" name="start_date" class="form-control form-control-sm"
+                 value="{{ selected.start_date }}">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label small text-muted">End Date</label>
+          <input type="date" name="end_date" class="form-control form-control-sm"
+                 value="{{ selected.end_date }}">
+        </div>
+        <div class="col-md-3">
+        <label class="form-label small text-muted">Product ID</label>
+          <select name="product_id" class="form-select form-select-sm">
+            <option value="">All Product IDs</option>
+            {% for p in product_ids %}
+              <option value="{{ p.id }}"
+                {% if selected.product_id == p.id|stringformat:"s" %}selected{% endif %}>
+                {{ p.code }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+
+
+        <div class="col-md-3">
+          <label class="form-label small text-muted">Sort By</label>
+          <select name="sort_by" class="form-select form-select-sm">
+            <option value="date_desc" {% if sort_by == "date_desc" %}selected{% endif %}>Date (Newest)</option>
+            <option value="date_asc" {% if sort_by == "date_asc" %}selected{% endif %}>Date (Oldest)</option>
+            <option value="total_desc" {% if sort_by == "total_desc" %}selected{% endif %}>Total (High → Low)</option>
+            <option value="total_asc" {% if sort_by == "total_asc" %}selected{% endif %}>Total (Low → High)</option>
+            <option value="po_desc" {% if sort_by == "po_desc" %}selected{% endif %}>PO No. (Desc)</option>
+            <option value="po_asc" {% if sort_by == "po_asc" %}selected{% endif %}>PO No. (Asc)</option>
+          </select>
+        </div>
+
+        <div class="col-12 mt-3 d-flex align-items-center gap-3">
+          <button class="btn btn-sm btn-primary">Apply Filters</button>
+          <a href="{% url 'po-table' %}" class="btn btn-sm btn-outline-secondary">Reset</a>
+
+          <div class="form-check">
+            <input class="form-check-input"
+                  type="checkbox"
+                  name="show_archived"
+                  value="1"
+                  {% if show_archived %}checked{% endif %}>
+            <label class="form-check-label small text-muted">Show Archived</label>
+          </div>
+
+          <div class="form-check">
+            <input class="form-check-input"
+                  type="checkbox"
+                  name="show_cancelled"
+                  value="1"
+                  {% if show_cancelled %}checked{% endif %}>
+            <label class="form-check-label small text-muted">Show Cancelled</label>
+          </div>
+
+
+          <a
+            href="{% url 'po-table-export' %}?{{ request.GET.urlencode }}"
+            class="btn btn-sm btn-outline-success"
+            >
+            Export to Excel
+           </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>PO #</th>
+            <th>Date</th>
+            <th>Paid To</th>
+            <th>Prepared By</th>
+            <th>Status</th>
+            <th>Product ID</th>
+            <th>Approval</th>
+            <th>Total</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for po in page_obj %}
+            <tr class="
+              {% if po.is_cancelled %}table-danger
+              {% elif po.is_archived %}table-success
+              {% elif po.status == 'CHECK_SIGNING' and user|has_group:'AGR' %}table-warning
+              {% elif po.status == 'PURCHASE_ORDER_APPROVAL' and user|has_group:'JGG' %}table-warning
+              {% elif po.status == 'REQUEST_FOR_PAYMENT_APPROVAL' and user|has_group:'RVT' %}table-warning
+              {% elif po.status == 'CHECK_CREATION' and user|has_group:'RVT' %}table-warning
+              {% elif po.status == 'PURCHASE_ORDER' and user|has_group:'RVT' %}table-warning
+              {% endif %}
+            ">
+              <td class="fw-semibold">
+                {% if po.po_number %}
+                  {{ po.po_number }}
+                {% else %}
+                  {{ po.rfp_number }}
+                {% endif %}
+                {% if po.is_cancelled %}
+                    <span class="badge bg-danger ms-2">Cancelled</span>
+                {% elif po.is_archived %}
+                    <span class="badge bg-success ms-2">Archived</span>
+                {% endif %}
+              </td>
+              <td class="small text-muted">{{ po.date|date:"Y-m-d" }}</td>
+              <td>{{ po.paid_to }}</td>
+              <td class="small">{{ po.prepared_by.get_full_name|default:po.prepared_by.username }}</td>
+              <td><span class="badge bg-secondary">{{ po.status|title }}</span></td>
+              <td>{{ po.product_id_ref.code }}</td>
+              <td>
+                <span class="badge {% if po.approval_status == 'APPROVED' %}bg-success
+                                   {% elif po.approval_status == 'DECLINED' %}bg-danger
+                                   {% else %}bg-warning{% endif %}">
+                  {{ po.approval_status|title }}
+                </span>
+              </td>
+              <td class="fw-semibold">₱{{ po.total|floatformat:2|intcomma  }}</td>
+              <td class="text-end">
+                <a href="{% url 'po-edit' po.id %}" class="btn btn-outline-primary btn-sm">Open</a>
+                {% if is_top_management and not po.is_cancelled %}
+                <form method="post"
+                    action="{% url 'po-cancel' po.id %}"
+                    class="d-inline"
+                    onsubmit="return confirm('Cancel this PO? This cannot be undone.')">
+                {% csrf_token %}
+                <button class="btn btn-sm btn-outline-danger">Cancel</button>
+                </form>
+    {% endif %}
+
+              </td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="8" class="text-center text-muted py-4">No purchase orders found.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <!-- Pagination -->
+      <nav class="border-top p-2">
+        <ul class="pagination pagination-sm justify-content-end mb-0">
+          {% if page_obj.has_previous %}
+            <li class="page-item">
+              <a class="page-link" href="?{% querystring page=page_obj.previous_page_number %}">‹</a>
+            </li>
+          {% endif %}
+          <li class="page-item disabled">
+            <span class="page-link">
+              Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+            </span>
+          </li>
+          {% if page_obj.has_next %}
+            <li class="page-item">
+              <a class="page-link" href="?{% querystring page=page_obj.next_page_number %}">›</a>
+            </li>
+          {% endif %}
+        </ul>
+      </nav>
+
+    </div>
+  </div>
+
+</div>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const showAll = document.getElementById("showAllCheck");
+  if (showAll) {
+    showAll.addEventListener("change", () => showAll.closest("form").submit());
+  }
+});
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const input = document.getElementById("paid-to-search");
+  const hidden = document.getElementById("paid-to-value");
+  const box = document.getElementById("paid-to-suggestions");
+  const dataEl = document.getElementById("paid-to-data");
+
+  if (!input || !hidden || !box || !dataEl) return;
+
+  const values = JSON.parse(dataEl.textContent);
+
+  function renderSuggestions(matches) {
+    if (!matches.length) {
+      box.style.display = "none";
+      return;
+    }
+
+    box.innerHTML = matches.map(v => `
+      <button
+        type="button"
+        class="list-group-item list-group-item-action py-1"
+        data-value="${v}"
+      >
+        ${v}
+      </button>
+    `).join("");
+
+    box.style.display = "block";
+  }
+
+  input.addEventListener("input", function () {
+    const q = this.value.trim().toLowerCase();
+    hidden.value = this.value;
+
+    if (!q) {
+      box.style.display = "none";
+      return;
+    }
+
+    const matches = values
+      .filter(v => v.toLowerCase().includes(q))
+      .slice(0, 10);
+
+    renderSuggestions(matches);
+  });
+
+  box.addEventListener("click", function (e) {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    input.value = btn.dataset.value;
+    hidden.value = btn.dataset.value;
+    box.style.display = "none";
+  });
+
+  document.addEventListener("click", function (e) {
+    if (
+      !e.target.closest("#paid-to-search") &&
+      !e.target.closest("#paid-to-suggestions")
+    ) {
+      box.style.display = "none";
+    }
+  });
+});
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  document
+    .querySelectorAll('input[name="show_archived"], input[name="show_cancelled"]')
+    .forEach(cb => {
+      cb.addEventListener("change", () => cb.closest("form").submit());
+    });
+});
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  document
+    .querySelectorAll('input[name="show_archived"], input[name="show_cancelled"]')
+    .forEach(cb => {
+      cb.addEventListener("change", () => cb.closest("form").submit());
+    });
+});
+</script>
+
+{% endblock %}

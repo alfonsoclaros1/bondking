@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+
+<style>
+@page { size: Letter portrait; margin: 15mm; }
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 15px;
+  color: #000;
+}
+
+.doc-title {
+  font-size: 20px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+td, th {
+  padding: 4px;
+  vertical-align: top;
+}
+
+.label {
+  font-weight: bold;
+}
+
+.right {
+  text-align: right;
+}
+
+.center {
+  text-align: center;
+}
+
+/* ---------- HEADER ---------- */
+.logo {
+  height: 45px;
+}
+
+/* ---------- META ---------- */
+.meta td {
+  padding: 3px 6px;
+}
+
+/* ---------- ITEMS ---------- */
+.items th, .items td {
+  border: .5px solid #000;
+}
+
+.items th {
+  font-weight: bold;
+}
+
+/* ---------- TOTALS ---------- */
+.totals td {
+  padding: 4px;
+}
+
+/* ---------- SIGNATURE ---------- */
+.signature-line {
+  border-bottom: 1px solid #000;
+  height: 18px;
+  margin-top: 80px;
+}
+
+/* ---------- SECTION SPACING ---------- */
+.section {
+  margin-top: 18px;
+  margin-bottom: 18px;
+}
+</style>
+</head>
+
+<body>
+
+<!-- ================= HEADER ================= -->
+<table width="100%" class="section">
+<tr>
+  <!-- LEFT -->
+  <td width="50%" valign="top">
+    <img src="{{ logo_url }}" class="logo"><br>
+    <div class="doc-title">Purchase Order</div>
+  </td>
+
+  <!-- RIGHT -->
+  <td width="50%" valign="top">
+    <table class="meta">
+      <tr>
+        <td class="label">PO Number:</td>
+        <td class="right">{{ po.po_number }}</td>
+      </tr>
+      <tr>
+        <td class="label">Date:</td>
+        <td class="right">{{ po.date|date:"m/d/Y" }}</td>
+      </tr>
+      <tr>
+        <td class="label">Vendor:</td>
+        <td class="right">{{ po.paid_to }}</td>
+      </tr>
+      {% if po.address %}
+      <tr>
+        <td class="label">Address:</td>
+        <td class="right">{{ po.address }}</td>
+      </tr>
+      {% endif %}
+      <tr>
+        <td class="label">Product ID:</td>
+        <td class="right">{{ po.product_id }}</td>
+      </tr>
+    </table>
+  </td>
+</tr>
+</table>
+
+<br>
+
+<!-- ================= ITEMS ================= -->
+<table class="items section">
+<thead>
+<tr>
+  <th width="45%">PARTICULAR</th>
+  <th width="10%" class="center">QTY</th>
+  <th width="20%" class="right">UNIT PRICE</th>
+  <th width="25%" class="right">LINE TOTAL</th>
+</tr>
+</thead>
+<tbody>
+{% for it in items %}
+<tr>
+  <td>{{ it.particular }}</td>
+  <td class="center">{{ it.quantity }}</td>
+  <td class="right">₱{{ it.unit_price|floatformat:2 }}</td>
+  <td class="right">₱{{ it.total_price|floatformat:2 }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+<br>
+
+<!-- ================= REMARKS + TOTALS ================= -->
+<table width="100%" >
+<tr>
+  <!-- LEFT: REMARKS -->
+  <td width="50%" valign="top">
+    <span class="label">Remarks</span><br><br>
+
+    {% if po.remarks %}
+      <table width="100%">
+        <tr>
+          <td style="height:80px; vertical-align:top;">
+            {{ po.remarks|linebreaksbr }}
+          </td>
+        </tr>
+      </table>
+    {% else %}
+      <table width="100%">
+        <tr><td style="height:80px;"></td></tr>
+      </table>
+    {% endif %}
+  </td>
+
+  <!-- RIGHT: TOTALS -->
+  <td width="50%" valign="top">
+    <table class="totals">
+      <tr>
+        <td class="right label">SUBTOTAL</td>
+        <td class="right">₱{{ po.total_amount|floatformat:2 }}</td>
+      </tr>
+      <tr>
+        <td class="right label">TAX</td>
+        <td class="right">₱0.00</td>
+      </tr>
+      <tr>
+        <td class="right label">SHIPPING</td>
+        <td class="right">₱0.00</td>
+      </tr>
+      <tr>
+        <td class="right label">OTHER</td>
+        <td class="right">₱0.00</td>
+      </tr>
+      <tr>
+        <td class="right label">TOTAL</td>
+        <td class="right label">₱{{ po.total_amount|floatformat:2 }}</td>
+      </tr>
+    </table>
+  </td>
+</tr>
+</table>
+
+<br>
+
+<!-- ================= SIGNATURE ================= -->
+<table width="100%" class="section">
+<tr>
+  <td width="33%">
+    <span class="label">Approved By:</span>
+    <div class="signature-line"></div>
+  </td>
+  <td width="34%"></td>
+  <td width="33%"></td>
+</tr>
+</table>
+
+</body>
+</html>

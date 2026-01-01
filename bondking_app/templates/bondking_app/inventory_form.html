@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}New Inventory Issuance{% endblock %}
+{% block content %}
+
+<div class="container py-3">
+
+  <!-- =======================
+       HEADER
+  ======================= -->
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h4 class="mb-0">New Inventory Issuance</h4>
+    <a href="{% url 'inventory-table' %}" class="btn btn-outline-secondary btn-sm">
+      Back to Inventory
+    </a>
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+
+    <!-- =======================
+         ISSUANCE DETAILS
+    ======================= -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header fw-semibold">
+        Issuance Details
+      </div>
+      <div class="card-body">
+
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label small text-muted">
+              Issuance Type
+            </label>
+            {{ form.issuance_type }}
+          </div>
+
+          <div class="col-md-8">
+            <label class="form-label small text-muted">
+              Remarks (optional)
+            </label>
+            {{ form.remarks }}
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- =======================
+         ITEMS
+    ======================= -->
+    <div class="card shadow-sm mb-3">
+      <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+        Items
+        {% if not is_locked %}
+        <button type="button" class="btn btn-sm btn-outline-primary" id="add-item">
+          + Add Item
+        </button>
+        {% endif %}
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0" id="items-table">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 45%;">Item</th>
+              <th style="width: 20%;" class="text-end">Quantity</th>
+              <th style="width: 20%;" class="text-end">Available (WH)</th>
+              <th style="width: 15%;"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {{ formset.management_form }}
+
+            {% for f in formset %}
+            <tr class="item-row">
+              <td>{{ f.product }}</td>
+              <td class="text-end">{{ f.quantity }}</td>
+              <td class="text-end text-muted wh-stock-cell">
+                —
+                </td>
+              <td class="text-end">
+                {% if not is_locked %}
+                <button type="button" class="btn btn-sm btn-outline-danger remove-item">
+                  ✖
+                </button>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- =======================
+         ACTIONS
+    ======================= -->
+    <div class="d-flex justify-content-end gap-2">
+      <a href="{% url 'inventory-table' %}" class="btn btn-outline-secondary">
+        Cancel
+      </a>
+        <button
+          type="submit"
+          class="btn btn-primary"
+          id="submit-btn"
+          {% if is_locked %}disabled{% endif %}
+        >
+          {% if is_locked %}Approved{% else %}Submit for Approval{% endif %}
+        </button>
+    </div>
+
+  </form>
+</div>
+
+<!-- =======================
+     SIMPLE JS (DR-style)
+======================= -->
+
+{{ wh_stock_map|json_script:"wh-stock-data" }}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const form = document.querySelector("form");
+  const submitBtn = document.getElementById("submit-btn");
+
+  form.addEventListener("submit", function () {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Submitting…";
+  });
+});
+</script>
+
+<script>
+const WH_STOCK = JSON.parse(
+  document.getElementById("wh-stock-data").textContent
+);
+
+document.addEventListener("DOMContentLoaded", function () {
+
+  const form = document.querySelector("form");
+  const submitBtn = document.getElementById("submit-btn");
+  const addBtn = document.getElementById("add-item");
+  const tableBody = document.querySelector("#items-table tbody");
+  const totalFormsInput = document.getElementById("id_items-TOTAL_FORMS");
+
+
+  /* ==========================
+     LOCK SUBMIT
+  ========================== */
+  form.addEventListener("submit", function () {
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Submitting…";
+  });
+
+  /* ==========================
+     WH AVAILABILITY
+  ========================== */
+  function updateWHAvailability(row) {
+    const productSelect = row.querySelector("select");
+    const stockCell = row.querySelector(".wh-stock-cell");
+
+    if (!productSelect || !stockCell) return;
+
+    const productId = productSelect.value;
+
+    if (!productId || !(productId in WH_STOCK)) {
+      stockCell.textContent = "—";
+      return;
+    }
+
+    stockCell.textContent = WH_STOCK[productId];
+  }
+
+  function bindAvailability(row) {
+    const productSelect = row.querySelector("select");
+    if (!productSelect) return;
+
+    productSelect.addEventListener("change", function () {
+      updateWHAvailability(row);
+    });
+
+    updateWHAvailability(row);
+  }
+
+  /* Bind existing rows */
+  document.querySelectorAll(".item-row").forEach(bindAvailability);
+
+  /* ==========================
+     ADD ITEM (FORMSET SAFE)
+  ========================== */
+  
+  addBtn.addEventListener("click", function () {
+    const totalForms = parseInt(totalFormsInput.value);
+    const templateRow = tableBody.querySelector(".item-row");
+    const newRow = templateRow.cloneNode(true);
+
+    newRow.querySelectorAll("input, select").forEach(el => {
+      el.name = el.name.replace(/-\d+-/, `-${totalForms}-`);
+      el.id = el.id.replace(/-\d+-/, `-${totalForms}-`);
+      if (el.tagName === "INPUT") el.value = "";
+      if (el.tagName === "SELECT") el.selectedIndex = 0;
+    });
+
+    newRow.querySelector(".wh-stock-cell").textContent = "—";
+
+    tableBody.appendChild(newRow);
+    totalFormsInput.value = totalForms + 1;
+
+    bindAvailability(newRow);
+  });
+
+  /* ==========================
+     REMOVE ITEM
+  ========================== */
+  tableBody.addEventListener("click", function (e) {
+    if (e.target.classList.contains("remove-item")) {
+      const rows = tableBody.querySelectorAll(".item-row");
+      if (rows.length > 1) {
+        e.target.closest("tr").remove();
+      }
+    }
+  });
+
+});
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+  function updateWHAvailability(row) {
+    const productSelect = row.querySelector("select");
+    const stockCell = row.querySelector(".wh-stock-cell");
+
+    if (!productSelect || !stockCell) return;
+
+    const productId = productSelect.value;
+    if (!productId || !(productId in WH_STOCK)) {
+      stockCell.textContent = "—";
+      return;
+    }
+
+    stockCell.textContent = WH_STOCK[productId];
+  }
+
+  // Update when product changes
+  document.querySelectorAll(".item-row").forEach(row => {
+    const productSelect = row.querySelector("select");
+    if (productSelect) {
+      productSelect.addEventListener("change", () => updateWHAvailability(row));
+      updateWHAvailability(row);
+    }
+  });
+
+});
+</script>
+
+{% endblock %}

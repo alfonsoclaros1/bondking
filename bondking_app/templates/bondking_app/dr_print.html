@@ -1,0 +1,315 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+
+<style>
+@page { size: Letter portrait; margin: 15mm; }
+
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 15px; /* ⬅ increased */
+  color: #000;
+}
+.doc-title {
+  font-size: 20px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+td, th {
+  padding: 4px;
+  vertical-align: top;
+}
+
+.label {
+  font-weight: bold;
+}
+
+.right {
+  text-align: right;
+}
+
+.center {
+  text-align: center;
+}
+
+/* ---------- HEADER ---------- */
+.header-title {
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.logo {
+  height: 45px;
+}
+
+/* ---------- META ---------- */
+.meta td {
+  padding: 3px 6px;
+}
+
+/* ---------- ADDRESS BOXES ---------- */
+.addr-box td {
+  padding: 6px;
+}
+.addr-title {
+  font-size: 16px;
+  font-weight: bold;
+  margin-bottom: 6px;
+  padding: 10px;
+  display: block;
+  /* Yellow highlight */
+  background-color: #fff3a0; /* soft paper-yellow */
+}
+
+/* ---------- ITEMS ---------- */
+.items th, .items td {
+  border: .5px solid #000;
+}
+
+.items th {
+  font-weight: bold;
+}
+
+/* ---------- TOTALS ---------- */
+.totals td {
+  padding: 4px;
+}
+
+.totals .label {
+  font-weight: bold;
+}
+
+/* ---------- SIGNATURE ---------- */
+.signature-line {
+  border-bottom: 1px solid #000;
+  height: 18px; /* ⬅ reduced */
+  margin-top: 100px; /* ⬅ space for signing */
+  margin-bottom: 8px; /* ⬅ space for signing */
+}
+
+/* ---------- SECTION SPACING ---------- */
+.section {
+  margin-top: 18px;
+  margin-bottom: 18px;
+}
+
+.section-tight {
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+/* ---------- ITEMS HEADER (ADDR-TITLE STYLE) ---------- */
+.items thead th {
+  background-color: #fff3a0;     /* same yellow as addr-title */
+  font-weight: 800;              /* bold */
+  font-size: 16px;                  /* keep grid structure */
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+/* ---------- ITEMS ROW PADDING ---------- */
+.items tbody td {
+  padding-top: 10px;
+  padding-bottom: 10px;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+</style>
+</head>
+
+<body>
+
+<!-- ================= HEADER ================= -->
+<table width="100%" class="section">
+  <tr>
+    <!-- LEFT: LOGO + TITLE -->
+    <td width="50%" valign="top">
+      <img src="{{ STATIC_ROOT_URL }}img/bondking-logo-bw.jpg" class="logo"><br>
+      <div class="doc-title">Delivery Receipt</div>
+    </td>
+
+    <!-- RIGHT: META STACK -->
+    <td width="50%" valign="top">
+      <table width="100%">
+        <tr>
+          <td class="label">Order Date:</td>
+          <td class="right">{{ dr.date_of_order|date:"m/d/Y" }}</td>
+        </tr>
+        <tr>
+          <td class="label">Delivery #:</td>
+          <td class="right">{{ dr.dr_number }}</td>
+        </tr>
+        <tr>
+          <td class="label">Payment Terms:</td>
+          <td class="right">{{ dr.get_payment_method_display }}</td>
+        </tr>
+        <tr>
+          <td class="label">Delivery Method:</td>
+          <td class="right">{{ dr.get_delivery_method_display }}</td>
+        </tr>
+        <tr>
+          <td class="label">Agent:</td>
+          <td class="right">
+            {{ dr.agent.get_full_name|default:dr.agent.username }}
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+
+<br>
+
+<!-- ================= ADDRESSES ================= -->
+<table class="addr-box" class="section">
+<tr>
+  <td width="50%">
+    <span class="addr-title">Bill / Shipping Address</span>
+
+    <span class="label">Name: </span>
+    {{ client.company_name }}<br><br>
+
+    <span class="label">Contact Number: </span>
+    {{ client.contact_number }}<br><br>
+
+    <span class="label">Delivery Address: </span>
+    {{ client.full_address }}
+  </td>
+
+  <td width="50%">
+    <span class="addr-title">Invoice Address</span>
+    Bond Solutions Incorporated<br>
+
+    <br>
+    0962-577-9791<br>
+
+    <br>
+    FSS Building 1 Scout Castor, corner Scout Tuazon,<br>
+    Barangay Laging Handa, Quezon City
+  </td>
+</tr>
+</table>
+
+<br>
+
+<!-- ================= ITEMS ================= -->
+<table class="items section" >
+<thead>
+<tr>
+  <th width="15%">ITEM #</th>
+  <th width="40%">DESCRIPTION</th>
+  <th width="10%" class="center">QTY</th>
+  <th width="15%" class="right">UNIT PRICE</th>
+  <th width="20%" class="right">TOTAL</th>
+</tr>
+</thead>
+<tbody>
+{% for it in items %}
+<tr>
+  <td>{{ it.product.sku }}</td>
+  <td>{{ it.description|default:it.product.name }}</td>
+  <td class="center">{{ it.quantity }}</td>
+  <td class="right">₱{{ it.unit_price|floatformat:2 }}</td>
+  <td class="right">₱{{ it.line_total|floatformat:2 }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+<br>
+
+<!-- ================= REMARKS + TOTALS ================= -->
+<table width="100%" class="section">
+  <tr>
+    <!-- LEFT: REMARKS -->
+    <td width="60%" valign="top">
+
+    <table width="100%"
+            style="border:.5px solid #000; border-collapse:collapse;">
+
+        <!-- HEADER INSIDE BOX -->
+        <tr>
+        <td class="addr-title" style="border-bottom:.5px solid #000;">
+            Comments or Special Instructions
+        </td>
+        </tr>
+
+        <!-- CONTENT -->
+        <tr>
+        <td style="height:80px; vertical-align:top; padding:10px;">
+            {{ dr.remarks|linebreaksbr }}
+        </td>
+        </tr>
+
+    </table>
+
+
+
+    <table width="100%" style="margin-top:6px;">
+        <tr><td style="height:10px;"></td></tr>
+    </table>
+
+    </td>
+
+
+
+    <!-- RIGHT: TOTALS -->
+    <td width="40%" valign="top">
+      <table width="100%">
+        <tr>
+          <td class="right label">SUBTOTAL</td>
+          <td class="right">₱{{ dr.total_amount|floatformat:2 }}</td>
+        </tr>
+        <tr>
+          <td class="right label">SHIPPING</td>
+          <td class="right">₱0.00</td>
+        </tr>
+        <tr>
+          <td class="right label">OTHER</td>
+          <td class="right">₱0.00</td>
+        </tr>
+        <tr>
+          <td class="right label">TOTAL</td>
+          <td class="right label">₱{{ dr.total_amount|floatformat:2 }}</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+    <p style="margin-top:8px;">
+        <h2 class="center">Please Make Check Payable to: Bond Solutions Incorporated.</h3>
+    </p>
+<!-- ================= SIGNATURES ================= -->
+<table width="100%" class="section">
+<tr>
+  <td width="33%">
+    <div class="signature-line"></div>
+    <span class="label" style="margin-top:8px;">Prepared By:</span>
+  </td>
+
+  <td width="34%">
+    <!-- intentionally blank for spacing -->
+  </td>
+
+  <td width="33%">
+    <div class="signature-line"></div>
+    <span class="label"style="margin-top:8px;">Received By:</span>
+  </td>
+</tr>
+</table>
+
+
+<br>
+
+<div class="center">
+  Thank you for trusting us! Have a wonderful day!
+</div>
+
+<br>

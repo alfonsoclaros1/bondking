@@ -1,0 +1,761 @@
+{% extends "base.html" %}
+{% load static %}
+{% load humanize %}
+{% load dr_badges %}
+
+{% block title %}Delivery Receipts Table{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h4 class="mb-0">Delivery Receipts</h4>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{% url 'dr-kanban' %}" class="btn btn-outline-secondary btn-sm">Back to Kanban</a>
+      <a href="{% url 'dr-create' %}" class="btn btn-primary btn-sm">New DR</a>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-12 col-md-3 position-relative">
+          <label class="form-label small text-muted">Client</label>
+          <input
+            type="text"
+            class="form-control form-control-sm"
+            id="client-search"
+            placeholder="Search client…"
+            autocomplete="off"
+            value="{% for c in clients %}{% if selected.client|stringformat:'s' == c.id|stringformat:'s' %}{{ c.company_name }}{% endif %}{% endfor %}"
+          >
+
+          <input
+            type="hidden"
+            name="client"
+            id="client-id"
+            value="{{ selected.client }}"
+          >
+
+          <!-- Suggestions dropdown -->
+          <div
+            id="client-suggestions"
+            class="list-group position-absolute w-100 shadow-sm"
+            style="z-index: 1050; display: none; max-height: 240px; overflow-y: auto;"
+          ></div>
+
+          <!-- Preload clients as JSON -->
+          <script type="application/json" id="client-data">
+            [
+              {% for c in clients %}
+                {
+                  "id": {{ c.id }},
+                  "name": "{{ c.company_name|escapejs }}"
+                }{% if not forloop.last %},{% endif %}
+              {% endfor %}
+            ]
+          </script>
+        </div>
+
+
+
+        <div class="col-12 col-md-3">
+          <label class="form-label small text-muted">Agent</label>
+          <select name="agent" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for a in agents %}
+              <option value="{{ a.id }}" {% if selected.agent|stringformat:"s" == a.id|stringformat:"s" %}selected{% endif %}>
+                {{ a.get_full_name|default:a.username }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label small text-muted">Payment Method</label>
+          <select name="payment_method" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for val,label in payment_methods %}
+              <option value="{{ val }}" {% if selected.payment_method == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label small text-muted">Payment Status</label>
+          <select name="payment_status" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for val, label in payment_statuses %}
+              <option
+                value="{{ val }}"
+                {% if selected.payment_status == val %}selected{% endif %}
+              >
+                {{ label }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label small text-muted">Delivery Status</label>
+          <select name="delivery_status" class="form-select form-select-sm">
+            <option value="">All</option>
+            {% for val,label in delivery_statuses %}
+              <option value="{{ val }}" {% if selected.delivery_status == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label small text-muted">Start Date</label>
+          <input
+            type="date"
+            name="start_date"
+            class="form-control form-control-sm"
+            value="{{ selected.start_date }}"
+          >
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label small text-muted">End Date</label>
+          <input
+            type="date"
+            name="end_date"
+            class="form-control form-control-sm"
+            value="{{ selected.end_date }}"
+          >
+        </div>
+        <div class="col-12 col-md-3">
+          <label class="form-label small text-muted">Sort By</label>
+          <select name="sort_by" class="form-select form-select-sm">
+            <option value="date_desc" {% if sort_by == "date_desc" %}selected{% endif %}>
+              Date (Newest first)
+            </option>
+            <option value="date_asc" {% if sort_by == "date_asc" %}selected{% endif %}>
+              Date (Oldest first)
+            </option>
+            <option value="total_desc" {% if sort_by == "total_desc" %}selected{% endif %}>
+              Total (High → Low)
+            </option>
+            <option value="total_asc" {% if sort_by == "total_asc" %}selected{% endif %}>
+              Total (Low → High)
+            </option>
+            <option value="dr_desc" {% if sort_by == "dr_desc" %}selected{% endif %}>
+              DR Number (Descending)
+            </option>
+            <option value="dr_asc" {% if sort_by == "dr_asc" %}selected{% endif %}>
+              DR Number (Ascending)
+            </option>
+          </select>
+        </div>
+
+        <div class="col-12 mt-3">
+          <div class="d-flex flex-wrap align-items-center gap-3">
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-sm btn-primary">
+                Apply Filters
+              </button>
+              <a href="{% url 'dr-table' %}" class="btn btn-sm btn-outline-secondary">
+                Reset
+              </a>
+            </div>
+
+            <div class="form-check ms-1">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox"
+                      name="show_archived" value="1"
+                      {% if show_archived %}checked{% endif %}>
+                <label class="form-check-label small text-muted">Show Archived</label>
+              </div>
+
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox"
+                      name="show_cancelled" value="1"
+                      {% if show_cancelled %}checked{% endif %}>
+                <label class="form-check-label small text-muted">Show Cancelled</label>
+              </div>
+              <div class="form-check">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  name="with_sales_invoice"
+                  id="withSalesInvoice"
+                  value="1"
+                  {% if selected.with_sales_invoice %}checked{% endif %}
+                >
+                <label class="form-check-label small text-muted">
+                  With Sales Invoice
+                </label>
+              </div>
+
+            </div>
+              <a
+                href="{% url 'dr-table-export' %}?{{ request.GET.urlencode }}"
+                class="btn btn-sm btn-outline-success"
+              >
+                Export to Excel
+              </a>
+          </div>
+        </div>
+
+
+      </form>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
+            <tr>
+              <th class="ps-3">DR #</th>
+              <th>Date</th>
+              <th>Client</th>
+              <th>Agent</th>
+              <th>Items</th>
+              <th>Payment Status</th>
+              <th>Payment Method</th>
+              <th>Delivery Status</th>
+              <th>Total</th>
+              <th class="pe-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dr in page_obj %}
+              <tr class="
+                {% if dr.is_cancelled %}table-danger
+                {% elif dr.is_archived %}table-success
+                {% endif %}
+              ">
+                <td class="ps-3">
+                  <a href="{% url 'dr-edit' dr.id %}" class="text-decoration-none fw-semibold">
+                    {{ dr.dr_number }}
+                  </a>
+                  {% if dr.sales_invoice_no %}
+                    <span class="badge bg-info ms-2">SI</span>
+                  {% endif %}
+
+                  {% if dr.is_cancelled %}
+                    <span class="badge bg-danger ms-2">Cancelled</span>
+                  {% elif dr.is_archived %}
+                    <span class="badge bg-success ms-2">Archived</span>
+                  {% endif %}
+                </td>
+
+                <td class="text-muted small">{{ dr.date_of_order|date:"Y-m-d" }}</td>
+
+                <!-- Client: clickable, opens modal -->
+                <td>
+                  <button
+                    type="button"
+                    class="btn btn-link p-0 text-decoration-none btn-client"
+                    data-client-id="{{ dr.client.id }}"
+                    data-client-name="{{ dr.client.company_name }}"
+                  >
+                    {{ dr.client.company_name }}
+                  </button>
+                </td>
+
+                <td class="small">{{ dr.agent.get_full_name|default:dr.agent.username }}</td>
+
+                <!-- Items: show first item + commas, clickable for modal -->
+                <td class="items-cell">
+                  <button
+                    type="button"
+                    class="btn btn-link p-0 text-decoration-none btn-items text-start"
+                    data-dr-id="{{ dr.id }}"
+                    data-delivery-method="{{ dr.delivery_method }}"
+                  >
+
+                    {% with items=dr.items.all %}
+                      {% if items %}
+                        {% for it in items %}
+                          {{ it.product.name }}{% if not forloop.last %}, {% endif %}
+                        {% endfor %}
+                      {% else %}
+                        —
+                      {% endif %}
+                    {% endwith %}
+                  </button>
+                </td>
+
+                <!-- Items -->
+
+                <!-- Payment Status -->
+                <td>
+                  <span class="badge {{ dr.payment_status|payment_badge }}">
+                    {{ dr.get_payment_status_display }}
+                  </span>
+                </td>
+
+                <!-- Payment Method -->
+                <td class="small">{{ dr.get_payment_method_display }}</td>
+
+                <!-- Delivery Status -->
+                <td>
+                  <span class="badge {{ dr.delivery_status|delivery_badge }}">
+                    {{ dr.get_delivery_status_display }}
+                  </span>
+                </td>
+
+                <td class="fw-semibold">₱{{ dr.total_amount|floatformat:2|intcomma }}</td>
+
+                <td class="text-end pe-3">
+                  <div class="d-inline-flex gap-2">
+                    <a href="{% url 'dr-edit' dr.id %}" class="btn btn-outline-primary btn-sm">Open</a>
+
+                      {% if is_top_management and not dr.is_cancelled %}
+                      <form method="post"
+                            action="{% url 'dr-cancel' dr.id %}"
+                            class="d-inline"
+                            onsubmit="return confirm('Cancel this DR? This cannot be undone.')">
+                        {% csrf_token %}
+                        <button class="btn btn-sm btn-outline-danger">Cancel</button>
+                      </form>
+                      {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="9" class="text-center text-muted py-4">No delivery receipts found.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+          <nav class="border-top p-2">
+            <ul class="pagination pagination-sm justify-content-end mb-0">
+              {% if page_obj.has_previous %}
+                <li class="page-item">
+                  <a class="page-link" href="?{% querystring page=page_obj.previous_page_number %}">‹</a>
+                </li>
+              {% endif %}
+
+              <li class="page-item disabled">
+                <span class="page-link">
+                  Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                </span>
+              </li>
+
+              {% if page_obj.has_next %}
+                <li class="page-item">
+                  <a class="page-link" href="?{% querystring page=page_obj.next_page_number %}">›</a>
+                </li>
+              {% endif %}
+            </ul>
+          </nav>
+
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Client modal -->
+<div class="modal fade" id="clientModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="clientModalTitle">Client</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="clientModalBody">
+        <div class="text-muted">Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- HQ STOCKS TRANSACTIONS MODAL -->
+<div class="modal fade" id="hqTransactionsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">HQ Stock Transactions</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <div id="hq-transactions-content">
+          <div class="text-center text-muted">
+            Loading…
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer justify-content-between">
+        <div id="hq-archive-container"></div>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          Close
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+<!-- Items modal -->
+<div class="modal fade" id="itemsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="itemsModalTitle">Items</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="itemsModalBody">
+        <div class="text-muted">Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener("click", function(e) {
+
+  /* =======================
+     CLIENT MODAL
+     ======================= */
+  const clientBtn = e.target.closest(".btn-client");
+  if (clientBtn) {
+    const clientId = clientBtn.dataset.clientId;
+    const clientName = clientBtn.dataset.clientName;
+
+    const modalEl = document.getElementById("clientModal");
+    const modal = new bootstrap.Modal(modalEl);
+
+    document.getElementById("clientModalTitle").textContent = clientName;
+    const body = document.getElementById("clientModalBody");
+    body.innerHTML = `<div class="text-muted">Loading…</div>`;
+
+    fetch(`/api/clients/${clientId}/`)
+      .then(r => r.json())
+      .then(data => {
+        body.innerHTML = `
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="small text-muted">Company</div>
+              <div class="fw-semibold">${data.company_name || "—"}</div>
+            </div>
+            <div class="col-md-6">
+              <div class="small text-muted">Owner</div>
+              <div>${data.name_of_owner || "—"}</div>
+            </div>
+            <div class="col-md-6">
+              <div class="small text-muted">Contact</div>
+              <div>${data.contact_number || "—"}</div>
+            </div>
+            <div class="col-md-6">
+              <div class="small text-muted">Address</div>
+              <div>${data.full_address || "—"}</div>
+            </div>
+          </div>
+        `;
+      })
+      .catch(() => {
+        body.innerHTML = `<div class="text-danger">Failed to load client details.</div>`;
+      });
+
+    modal.show();
+    return;
+  }
+    /* =======================
+     ITEMS / HQ HANDLER
+     ======================= */
+  const itemsBtn = e.target.closest(".btn-items");
+  if (itemsBtn) {
+    const drId = itemsBtn.dataset.drId;
+    const drNumber = itemsBtn.dataset.drNumber;
+    const deliveryMethod = itemsBtn.dataset.deliveryMethod;
+
+    // --------------------------
+    // HQ STOCKS → HQ POPUP
+    // --------------------------
+    if (deliveryMethod === "HQ_STOCKS") {
+        openHQTransactions(drId);
+        return;
+    }
+
+    // --------------------------
+    // NORMAL DR → ITEMS MODAL
+    // --------------------------
+    const modalEl = document.getElementById("itemsModal");
+    const modal = new bootstrap.Modal(modalEl);
+
+    document.getElementById("itemsModalTitle").textContent =
+      `Items for ${drNumber}`;
+
+    const body = document.getElementById("itemsModalBody");
+    body.innerHTML = `<div class="text-muted">Loading…</div>`;
+
+    fetch(`/api/dr/${drId}/items/`)
+      .then(r => r.json())
+      .then(data => {
+        if (!data.ok) throw new Error();
+
+        body.innerHTML = `
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Description</th>
+                  <th>Qty</th>
+                  <th>Unit</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.items.map(it => `
+                  <tr>
+                    <td class="fw-semibold">${it.product}</td>
+                    <td class="small">${it.description || "—"}</td>
+                    <td>${it.quantity}</td>
+                    <td>₱${Number(it.unit_price).toFixed(2)}</td>
+                    <td>₱${Number(it.line_total).toFixed(2)}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        `;
+      })
+      .catch(() => {
+        body.innerHTML = `<div class="text-danger">Failed to load items.</div>`;
+      });
+
+    modal.show();
+    return;
+  }
+
+
+});
+
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const input = document.getElementById("client-search");
+  const hidden = document.getElementById("client-id");
+  const box = document.getElementById("client-suggestions");
+  const dataEl = document.getElementById("client-data");
+
+  if (!input || !hidden || !box || !dataEl) return;
+
+  const clients = JSON.parse(dataEl.textContent);
+
+  function renderSuggestions(matches) {
+    if (!matches.length) {
+      box.style.display = "none";
+      return;
+    }
+
+    box.innerHTML = matches.map(c => `
+      <button
+        type="button"
+        class="list-group-item list-group-item-action py-1"
+        data-id="${c.id}"
+        data-name="${c.name}"
+      >
+        ${c.name}
+      </button>
+    `).join("");
+
+    box.style.display = "block";
+  }
+
+  input.addEventListener("input", function () {
+    const q = this.value.trim().toLowerCase();
+
+    hidden.value = ""; // reset until selection
+
+    if (!q) {
+      box.style.display = "none";
+      return;
+    }
+
+    const matches = clients
+      .filter(c => c.name.toLowerCase().includes(q))
+      .slice(0, 10); // limit results
+
+    renderSuggestions(matches);
+  });
+
+  box.addEventListener("click", function (e) {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    // ✅ Set visible text
+    input.value = btn.dataset.name;
+
+    // ✅ Set hidden client ID (THIS is what the backend reads)
+    hidden.value = btn.dataset.id;
+
+    // ✅ Hide suggestions
+    box.style.display = "none";
+
+    // ✅ Auto-submit the form (same UX as other filters)
+    input.closest("form").submit();
+  });
+
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest("#client-search") && !e.target.closest("#client-suggestions")) {
+      box.style.display = "none";
+    }
+  });
+});
+function openHQTransactions(drId) {
+  const modalEl = document.getElementById("hqTransactionsModal");
+  const modal = new bootstrap.Modal(modalEl);
+  const content = document.getElementById("hq-transactions-content");
+  const archiveContainer = document.getElementById("hq-archive-container");
+
+  content.innerHTML = `<div class="text-center text-muted">Loading…</div>`;
+  archiveContainer.innerHTML = "";
+
+  fetch(`/dr/${drId}/hq-transactions/`)
+    .then(res => res.json())
+    .then(data => {
+      if (!data.ok) throw new Error("Failed to load");
+
+      let html = "";
+
+      data.items.forEach(item => {
+        const badgeClass =
+          item.remaining_qty <= 0 ? "bg-danger" :
+          item.remaining_qty <= 5 ? "bg-warning text-dark" :
+          "bg-success";
+
+        html += `
+          <div class="mb-3">
+            <button class="btn btn-light w-100 text-start"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#hq-item-${item.product_name.replace(/\s+/g, '-')}"
+            >
+              <strong>${item.product_name}</strong>
+              <span class="badge ${badgeClass} float-end">
+                Remaining: ${item.remaining_qty}
+              </span>
+            </button>
+
+            <div class="collapse mt-2" id="hq-item-${item.product_name.replace(/\s+/g, '-')}">
+              ${item.transactions.length === 0
+                ? `<div class="text-muted small p-2">No transactions yet</div>`
+                : `
+                <table class="table table-sm">
+                  <thead>
+                    <tr>
+                      <th>DR</th>
+                      <th>Client</th>
+                      <th>Date</th>
+                      <th class="text-end">Qty</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${item.transactions.map(t => `
+                      <tr>
+                        <td>${t.dr_number}</td>
+                        <td>${t.client}</td>
+                        <td>${t.date}</td>
+                        <td class="text-end">${t.quantity}</td>
+                      </tr>
+                    `).join("")}
+                  </tbody>
+                </table>
+              `}
+            </div>
+          </div>
+        `;
+      });
+
+      content.innerHTML = html;
+
+      if (data.can_archive && data.is_top_management) {
+        archiveContainer.innerHTML = `
+          <button class="btn btn-danger" id="hq-archive-btn">
+            Archive HQ Stock
+          </button>
+        `;
+
+        document.getElementById("hq-archive-btn").onclick = function () {
+          if (!confirm("Archive this HQ Stock?")) return;
+
+          fetch(`/dr/${drId}/archive/`, {
+            method: "POST",
+            headers: {
+              "X-CSRFToken": getCookie("csrftoken")
+            }
+          }).then(() => location.reload());
+        };
+      }
+
+    })
+    .catch(() => {
+      content.innerHTML =
+        `<div class="text-danger text-center">Failed to load transactions</div>`;
+    });
+
+  modal.show();
+}
+
+
+</script>
+<style>
+.items-cell {
+  max-width: 320px;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.items-cell .btn-link {
+  text-align: left;
+  white-space: normal;
+  padding: 0;
+}
+table td {
+  text-align: left;
+  vertical-align: top;
+}
+.badge {
+  font-weight: 500;
+  padding: 0.4em 0.6em;
+}
+tr.table-danger td {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+tr.table-danger td {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+tr.table-danger td a,
+tr.table-danger td button {
+  text-decoration: none;
+}
+
+</style>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  document
+    .querySelectorAll(
+      'input[name="show_archived"], input[name="show_cancelled"], input[name="with_sales_invoice"]'
+    )
+    .forEach(cb => {
+      cb.addEventListener("change", function () {
+        this.closest("form").submit();
+      });
+    });
+});
+</script>
+
+
+
+
+
+{% endblock %}
