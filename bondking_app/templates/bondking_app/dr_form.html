@@ -488,6 +488,18 @@ input[name$="-id"] {
               🖨 Print DR
             </a>
           {% endif %}
+          {% if not is_create and not dr.is_cancelled and user.groups.filter(name="AGR").exists %}
+            <form method="post"
+                  action="{% url 'dr-cancel' dr.id %}"
+                  class="d-inline"
+                  onsubmit="return confirm('Cancel this Delivery Receipt? This cannot be undone.')">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-danger">
+                Cancel DR
+              </button>
+            </form>
+          {% endif %}
+
           <button type="submit" name="action" value="save" class="btn btn-primary px-4">
             Save
           </button>
