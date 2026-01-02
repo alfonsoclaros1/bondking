@@ -345,13 +345,25 @@ def dr_kanban(request):
     """
     Render the DR Kanban board.
     """
-    drs = DeliveryReceipt.objects.filter(is_archived=False).select_related("client").order_by("-created_at").exclude(delivery_method=DeliveryMethod.D2D_STOCKS)
-    d2d_drs = [d for d in drs if d.delivery_method == "D2D_STOCKS"]
-    normal_drs = [d for d in drs if d.delivery_method != "D2D_STOCKS"]
+    active_drs = (
+    DeliveryReceipt.objects
+    .filter(is_archived=False, is_cancelled=False)
+    .select_related("client", "agent")
+    .order_by("-created_at")
+)
+
+    normal_drs = active_drs.exclude(
+        delivery_method=DeliveryMethod.D2D_STOCKS
+    )
+
+    d2d_stocks = active_drs.filter(
+        delivery_method=DeliveryMethod.D2D_STOCKS
+    )
     column_items = {col: [] for col in KANBAN_COLUMNS}
-    for dr in drs:
-        col = dr.get_current_column()
-        column_items.setdefault(col, []).append(dr)
+
+    for dr in normal_drs:
+        column_items[dr.get_current_column()].append(dr)
+
 
 
     d2d_stocks = DeliveryReceipt.objects.filter(
@@ -400,6 +412,8 @@ def dr_kanban(request):
         "is_admin_like": is_admin_like,
         "available_roles": available_roles if is_admin_like else [],
         "d2d_stocks": d2d_stocks,
+        "column_items": column_items,
+        "KANBAN_COLUMNS": KANBAN_COLUMNS,
     }
     return render(request, "bondking_app/dr_kanban.html", context)
 # =========================
