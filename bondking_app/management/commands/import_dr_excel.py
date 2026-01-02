@@ -245,6 +245,111 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f"Users ready: {len(user_cache)}"))
         else:
             self.stdout.write("👤 Users sheet missing/empty → using legacy_import for all user FKs.")
+        # -------------------------
+        # 9) Purchase Orders (AUTHORITATIVE)
+        # -------------------------
+        if df_po is not None and len(df_po) > 0:
+            require_cols(
+                df_po,
+                {
+                    "po_number",
+                    "date",
+                    "product_id",
+                    "paid_to",
+                    "particular",
+                    "qty",
+                    "UNIT COST",
+                    "AMOUNT",
+                    "MOP/CHECK#",
+                    "STATUS",
+                    "is_archived",
+                    "is_cancelled",
+                },
+                "PO",
+            )
+
+
+            self.stdout.write("💳 Importing PurchaseOrders (AUTHORITATIVE)…")
+
+            status_allowed = {c[0] for c in POStatus.choices}
+
+            for po_no, rows in df_po.groupby("po_number"):
+                po_no = norm_str(po_no)
+                if not po_no:
+                    continue
+
+                r0 = rows.iloc[0]
+
+                status_raw = norm_upper(r0.get("status"))
+                status = status_raw if status_raw in status_allowed else POStatus.REQUEST_FOR_PAYMENT
+
+                vendor = norm_str(r0.get("paid_to"))
+                subject = norm_str(r0.get("particular"))
+
+                is_archived = to_bool(r0.get("is_archived"), default=False)
+                is_cancelled = to_bool(r0.get("is_cancelled"), default=False)
+
+                # ProductID (FK)
+                product_code = norm_str(r0.get("product_id"))
+                product_id_ref = None
+                if product_code:
+                    product_id_ref, _ = ProductID.objects.get_or_create(
+                        code=product_code,
+                        defaults={
+                            "description": subject or vendor or product_code,
+                            "is_active": True,
+                        },
+                    )
+
+                # 🔥 AUTHORITATIVE UPSERT
+                po, _ = PurchaseOrder.objects.update_or_create(
+                po_number=po_no,
+                defaults={
+                    "paid_to": vendor or "UNKNOWN",
+                    "address": "",
+                    "date": to_date(r0.get("date")) or timezone.now().date(),
+                    "status": status,
+                    "approval_status": POApprovalStatus.PENDING,
+                    "cheque_number": norm_str(r0.get("MOP/CHECK#")),
+                    "is_archived": is_archived,
+                    "is_cancelled": is_cancelled,
+                    "total": Decimal("0.00"),
+                    "prepared_by": legacy_user,
+                    "checked_by": legacy_user,
+                    "approved_by": legacy_user,
+                    "rfp_number": norm_str(r0.get("rfp_number")) or None,
+                    "product_id_ref": product_id_ref,
+                },
+            )
+
+
+                # 🔥 AUTHORITATIVE: wipe old particulars
+                po.particulars.all().delete()
+
+                running_total = Decimal("0.00")
+
+                for _, rr in rows.iterrows():
+                    particular = norm_str(rr.get("SUBJECT")) or "PARTICULAR"
+
+                    qty = None if pd.isna(rr.get("qty")) else to_int(rr.get("qty"), default=0)
+                    unit_price = None if pd.isna(rr.get("UNIT COST")) else to_decimal(rr.get("UNIT COST"))
+                    total_price = None if pd.isna(rr.get("AMOUNT")) else to_decimal(rr.get("AMOUNT"))
+
+                    PurchaseOrderParticular.objects.create(
+                        purchase_order=po,
+                        particular=particular,
+                        quantity=qty,
+                        unit_price=unit_price,
+                        total_price=total_price,
+                    )
+
+                    if total_price:
+                        running_total += total_price
+
+                po.total = running_total.quantize(Decimal("0.01"))
+                po.save(update_fields=["total"])
+
+            self.stdout.write(self.style.SUCCESS("✅ Purchase Orders imported (authoritative)."))
 
         # -------------------------
         # 2) Clients
@@ -583,93 +688,4 @@ class Command(BaseCommand):
         else:
             self.stdout.write("🏗️ InventoryIssuanceItem sheet missing/empty → skipping items.")
 
-        # -------------------------
-        # 9) Purchase Orders (PO) + Particulars + ProductID mapping
-        # -------------------------
-        if df_po is not None and len(df_po) > 0:
-            require_cols(
-                df_po,
-                {"PO#", "DATE", "PRODUCT CODE", "VENDOR", "SUBJECT", "QTY", "UNIT COST", "AMOUNT", "MOP/CHECK#", "STATUS"},
-                "PO",
-            )
 
-            self.stdout.write("💳 Importing PurchaseOrders + Particulars…")
-
-            # group by PO#
-            for po_no, rows in df_po.groupby("PO#"):
-                po_no = norm_str(po_no)
-                if not po_no:
-                    continue
-
-                r0 = rows.iloc[0]
-
-                status_raw = norm_upper(r0.get("STATUS"))
-                status_allowed = {c[0] for c in POStatus.choices}
-                status = status_raw if status_raw in status_allowed else POStatus.REQUEST_FOR_PAYMENT
-
-                prepared_by = legacy_user
-                checked_by = legacy_user
-                approved_by = legacy_user
-
-                vendor = norm_str(r0.get("VENDOR"))
-                subject = norm_str(r0.get("SUBJECT"))
-
-                # ProductID reference (FK) comes from PRODUCT CODE column
-                product_code = norm_str(r0.get("PRODUCT CODE"))
-                product_id_ref = None
-                if product_code:
-                    product_id_ref, _ = ProductID.objects.get_or_create(
-                        code=product_code,
-                        defaults={"description": subject or vendor or product_code, "is_active": True},
-                    )
-
-                po = PurchaseOrder.objects.create(
-                    paid_to=vendor or "UNKNOWN",
-                    address="",  # your Excel doesn’t carry supplier address
-                    date=to_date(r0.get("DATE")) or timezone.now().date(),
-                    status=status,
-                    approval_status=POApprovalStatus.PENDING,
-                    cheque_number=norm_str(r0.get("MOP/CHECK#")),
-                    is_archived=False,
-                    is_cancelled=False,
-                    total=Decimal("0.00"),  # will recalc from particulars
-                    prepared_by=prepared_by,
-                    checked_by=checked_by,
-                    approved_by=approved_by,
-                    po_number=po_no,
-                    rfp_number=None,
-                    product_id_ref=product_id_ref,
-                )
-
-                # particulars per line
-                running_total = Decimal("0.00")
-
-                for _, rr in rows.iterrows():
-                    particular = norm_str(rr.get("SUBJECT")) or "PARTICULAR"
-                    qty = rr.get("QTY")
-                    unit_cost = rr.get("UNIT COST")
-                    amount = rr.get("AMOUNT")
-
-                    q = None if pd.isna(qty) else to_int(qty, default=0)
-                    up = None if pd.isna(unit_cost) else to_decimal(unit_cost, default=Decimal("0.00"))
-                    tp = None if pd.isna(amount) else to_decimal(amount, default=Decimal("0.00"))
-
-                    PurchaseOrderParticular.objects.create(
-                        purchase_order=po,
-                        particular=particular,
-                        quantity=q,
-                        unit_price=up,
-                        total_price=tp,
-                    )
-
-                    if tp is not None:
-                        running_total += tp
-
-                po.total = running_total.quantize(Decimal("0.01"))
-                po.save(update_fields=["total"])
-
-            self.stdout.write(self.style.SUCCESS("✅ Purchase Orders imported."))
-        else:
-            self.stdout.write("💳 PO sheet missing/empty → skipping Purchase Orders.")
-
-        self.stdout.write(self.style.SUCCESS("✅ IMPORT COMPLETE (strict, multi-sheet, model-aligned)"))

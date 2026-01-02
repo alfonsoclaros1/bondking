@@ -165,6 +165,29 @@ def dr_edit(request, pk):
     lifecycle_steps = dr.get_lifecycle_steps()
     current_meta = DR_STEP_META.get(current_step, {})
     next_meta = dr.get_next_step_meta()
+    # =========================
+    # DR NAVIGATION (Prev / Next)
+    # =========================
+    nav_qs = (
+        DeliveryReceipt.objects
+        .filter(is_archived=False, is_cancelled=False)
+        .order_by("id")
+    )
+
+    prev_dr = (
+        nav_qs
+        .filter(id__lt=dr.id)
+        .order_by("-id")
+        .first()
+    )
+
+    next_dr = (
+        nav_qs
+        .filter(id__gt=dr.id)
+        .order_by("id")
+        .first()
+    )
+
 
     # ==========================
     # ACTION HANDLING (PO STYLE)
@@ -301,6 +324,8 @@ def dr_edit(request, pk):
         "kanban_url": kanban_url,
         "dr_flow": lifecycle_steps,
         "has_missing_required": bool(missing_fields),
+        "prev_dr": prev_dr,
+        "next_dr": next_dr,
     }
 
     return render(request, "bondking_app/dr_form.html", context)
