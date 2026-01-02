@@ -97,6 +97,78 @@
             {% endfor %}
           </select>
         </div>
+        <!-- =========================
+            ADDITIONAL FILTERS (ROW 2)
+        ========================= -->
+        <div class="row g-2 mt-2 align-items-end">
+
+          <!-- DR NUMBER -->
+          <div class="col-12 col-md-3 position-relative">
+            <label class="form-label small text-muted">DR Number</label>
+            <input
+              type="text"
+              class="form-control form-control-sm"
+              id="dr-search"
+              placeholder="Search DR #…"
+              autocomplete="off"
+              value="{{ selected.dr_number }}"
+            >
+            <input type="hidden" name="dr_number" id="dr-number-hidden">
+
+            <div
+              id="dr-suggestions"
+              class="list-group position-absolute w-100 shadow-sm"
+              style="z-index:1050; display:none; max-height:240px; overflow-y:auto;"
+            ></div>
+
+            <script type="application/json" id="dr-data">
+              [
+                {% for d in page_obj.paginator.object_list %}
+                  "{{ d.dr_number }}"{% if not forloop.last %},{% endif %}
+                {% endfor %}
+              ]
+            </script>
+          </div>
+
+          <!-- DUE DATE START -->
+          <div class="col-12 col-md-3">
+            <label class="form-label small text-muted">Due Date (From)</label>
+            <input
+              type="date"
+              name="due_start"
+              class="form-control form-control-sm"
+              value="{{ selected.due_start }}"
+            >
+          </div>
+
+          <!-- DUE DATE END -->
+          <div class="col-12 col-md-3">
+            <label class="form-label small text-muted">Due Date (To)</label>
+            <input
+              type="date"
+              name="due_end"
+              class="form-control form-control-sm"
+              value="{{ selected.due_end }}"
+            >
+          </div>
+
+          <!-- DELIVERY METHOD -->
+          <div class="col-12 col-md-3">
+            <label class="form-label small text-muted">Delivery Method</label>
+            <select name="delivery_method" class="form-select form-select-sm">
+              <option value="">All</option>
+              {% for val,label in delivery_methods %}
+                <option value="{{ val }}"
+                  {% if selected.delivery_method == val %}selected{% endif %}
+                >
+                  {{ label }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+        </div>
+
         <div class="col-12 col-md-3">
           <label class="form-label small text-muted">Delivery Status</label>
           <select name="delivery_status" class="form-select form-select-sm">
@@ -756,6 +828,78 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const input = document.getElementById("dr-search");
+  const hidden = document.getElementById("dr-number-hidden");
+  const box = document.getElementById("dr-suggestions");
+  const dataEl = document.getElementById("dr-data");
+
+  if (!input || !box || !dataEl) return;
+
+  const drs = JSON.parse(dataEl.textContent);
+
+  input.addEventListener("input", function () {
+    const q = this.value.trim().toLowerCase();
+    hidden.value = "";
+
+    if (!q) {
+      box.style.display = "none";
+      return;
+    }
+
+    const matches = drs.filter(d => d.toLowerCase().includes(q)).slice(0, 10);
+
+    if (!matches.length) {
+      box.style.display = "none";
+      return;
+    }
+
+    box.innerHTML = matches.map(d => `
+      <button type="button"
+              class="list-group-item list-group-item-action py-1"
+              data-value="${d}">
+        ${d}
+      </button>
+    `).join("");
+
+    box.style.display = "block";
+  });
+
+  box.addEventListener("click", function (e) {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    input.value = btn.dataset.value;
+    hidden.value = btn.dataset.value;
+    box.style.display = "none";
+    input.closest("form").submit();
+  });
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest("#dr-search") && !e.target.closest("#dr-suggestions")) {
+      box.style.display = "none";
+    }
+  });
+});
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const form = document.querySelector("form");
+  const drInput = document.getElementById("dr-search");
+  const drHidden = document.getElementById("dr-number-hidden");
+
+  if (!form || !drInput || !drHidden) return;
+
+  form.addEventListener("submit", function () {
+    // ✅ If user typed but didn't click suggestion,
+    // sync visible value into hidden field
+    if (!drHidden.value && drInput.value.trim()) {
+      drHidden.value = drInput.value.trim();
+    }
+  });
+});
+</script>
 
 
 {% endblock %}

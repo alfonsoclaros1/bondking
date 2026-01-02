@@ -686,6 +686,24 @@ def dr_table(request):
     # -------------------
     # Show All logic
     # -------------------
+
+
+
+    # -------------------
+    # Filters
+    # -------------------
+    client_id = request.GET.get("client", "")
+    agent_id = request.GET.get("agent", "")
+    payment_method = request.GET.get("payment_method", "")
+    payment_status = request.GET.get("payment_status", "")
+    delivery_status = request.GET.get("delivery_status", "")
+    start_date = request.GET.get("start_date", "")
+    end_date = request.GET.get("end_date", "")
+    sort_by = request.GET.get("sort_by", "dr_asc")
+    dr_number = request.GET.get("dr_number", "")
+    due_start = request.GET.get("due_start", "")
+    due_end = request.GET.get("due_end", "")
+    delivery_method = request.GET.get("delivery_method", "")
     hide_archived = request.GET.get("hide_archived") == "1"
     hide_cancelled = request.GET.get("hide_cancelled") == "1"
     with_sales_invoice = request.GET.get("with_sales_invoice") == "1"
@@ -705,18 +723,17 @@ def dr_table(request):
             sales_invoice_no__exact=""
         )
 
+    if dr_number:
+        qs = qs.filter(dr_number__icontains=dr_number)
 
-    # -------------------
-    # Filters
-    # -------------------
-    client_id = request.GET.get("client", "")
-    agent_id = request.GET.get("agent", "")
-    payment_method = request.GET.get("payment_method", "")
-    payment_status = request.GET.get("payment_status", "")
-    delivery_status = request.GET.get("delivery_status", "")
-    start_date = request.GET.get("start_date", "")
-    end_date = request.GET.get("end_date", "")
-    sort_by = request.GET.get("sort_by", "dr_asc")
+    if due_start:
+        qs = qs.filter(payment_due__gte=due_start)
+
+    if due_end:
+        qs = qs.filter(payment_due__lte=due_end)
+
+    if delivery_method:
+        qs = qs.filter(delivery_method=delivery_method)
 
     if client_id.isdigit():
         qs = qs.filter(client_id=int(client_id))
@@ -766,6 +783,7 @@ def dr_table(request):
         "hide_cancelled": hide_cancelled,
         "sort_by": sort_by,
         "is_top_management": is_top_management(request.user),
+        "delivery_methods": DeliveryMethod.choices,
         "selected": {
             "client": client_id,
             "agent": agent_id,
@@ -775,6 +793,11 @@ def dr_table(request):
             "start_date": start_date,
             "end_date": end_date,
             "with_sales_invoice": with_sales_invoice,
+            "dr_number": dr_number,
+            "due_start": due_start,
+            "due_end": due_end,
+            "delivery_method": delivery_method,
+            "dr_number": dr_number,
         },
     }
 
