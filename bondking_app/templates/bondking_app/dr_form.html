@@ -488,7 +488,7 @@ input[name$="-id"] {
               🖨 Print DR
             </a>
           {% endif %}
-          {% if not is_create and not dr.is_cancelled and user.groups.filter(name="AGR").exists %}
+          {% if not is_create and not dr.is_cancelled and is_top_management %}
             <form method="post"
                   action="{% url 'dr-cancel' dr.id %}"
                   class="d-inline"
