@@ -479,6 +479,18 @@ input[name$="-id"] {
                 {{ form.payment_status }}
               </div>
             </div>
+            python manage.py dbshell
+            {% if not is_create  %}
+            <form method="post"
+                  action="{% url 'dr-cancel' dr.id %}"
+                  class="d-inline"
+                  onsubmit="return confirm('Cancel this Delivery Receipt? This cannot be undone.')">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-outline-danger" style="margin-right: 10px;">
+                Cancel DR
+              </button>
+            </form>
+          {% endif %}
 
             <div class="mb-3 mt-3">
               {{ form.proof_of_delivery.label_tag }}
@@ -518,17 +530,7 @@ input[name$="-id"] {
               🖨 Print DR
             </a>
           {% endif %}
-          {% if not is_create  %}
-            <form method="post"
-                  action="{% url 'dr-cancel' dr.id %}"
-                  class="d-inline"
-                  onsubmit="return confirm('Cancel this Delivery Receipt? This cannot be undone.')">
-              {% csrf_token %}
-              <button type="submit" class="btn btn-outline-danger" style="margin-right: 10px;">
-                Cancel DR
-              </button>
-            </form>
-          {% endif %}
+
 
           <button type="submit" name="action" value="save" class="btn btn-primary px-4">
             Save

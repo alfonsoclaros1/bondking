@@ -258,7 +258,7 @@ class Command(BaseCommand):
                     "paid_to",
                     "particular",
                     "qty",
-                    "UNIT COST",
+                    "cost",
                     "AMOUNT",
                     "MOP/CHECK#",
                     "STATUS",
@@ -280,7 +280,7 @@ class Command(BaseCommand):
 
                 r0 = rows.iloc[0]
 
-                status_raw = norm_upper(r0.get("status"))
+                status_raw = norm_upper(r0.get("STATUS"))
                 status = status_raw if status_raw in status_allowed else POStatus.REQUEST_FOR_PAYMENT
 
                 vendor = norm_str(r0.get("paid_to"))
@@ -329,10 +329,10 @@ class Command(BaseCommand):
                 running_total = Decimal("0.00")
 
                 for _, rr in rows.iterrows():
-                    particular = norm_str(rr.get("SUBJECT")) or "PARTICULAR"
+                    particular = norm_str(rr.get("particular")) or "PARTICULAR"
 
                     qty = None if pd.isna(rr.get("qty")) else to_int(rr.get("qty"), default=0)
-                    unit_price = None if pd.isna(rr.get("UNIT COST")) else to_decimal(rr.get("UNIT COST"))
+                    unit_price = None if pd.isna(rr.get("cost")) else to_decimal(rr.get("cost"))
                     total_price = None if pd.isna(rr.get("AMOUNT")) else to_decimal(rr.get("AMOUNT"))
 
                     PurchaseOrderParticular.objects.create(
