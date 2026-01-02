@@ -25,7 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 #SECRET_KEY = 'django-insecure-rvpk(@3c@6^@g$74*b3qukb%j)m3g8t3=1**dtm&jwi-41vl2n'
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-only-secret-key")
-DEBUG = False
+DEBUG = True
 # SECURITY WARNING: don't run with debug turned on in production!
 #DEBUG = True
 
@@ -90,12 +90,12 @@ WSGI_APPLICATION = 'bondking.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 DATABASES = {
     "default": dj_database_url.config(
-        default=os.environ.get(
-            "DATABASE_URL",
-            f"sqlite:///{BASE_DIR / 'db.sqlite3'}"
-        )
+        env="DATABASE_URL",
+        conn_max_age=600,
+        ssl_require=not DEBUG,
     )
 }
+
 
 
 

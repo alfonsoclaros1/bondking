@@ -359,7 +359,7 @@ def dr_kanban(request):
         )
 
     user = request.user
-    is_admin_like = is_top_management(user)
+    is_admin_like = user.is_superuser 
     available_roles = [
         ("SalesAgent", "Sales Agent"),
         ("SalesHead", "Sales Head"),
