@@ -479,7 +479,6 @@ input[name$="-id"] {
                 {{ form.payment_status }}
               </div>
             </div>
-            python manage.py dbshell
             {% if not is_create  %}
             <form method="post"
                   action="{% url 'dr-cancel' dr.id %}"
