@@ -166,8 +166,8 @@
             <a href="{% url 'inventory-table' %}" class="btn btn-sm btn-outline-secondary">Reset</a>
 
             <div class="form-check ms-2">
-              <input class="form-check-input" type="checkbox" name="show_cancelled" value="1" {% if show_cancelled %}checked{% endif %}>
-              <label class="form-check-label small text-muted">Show Cancelled</label>
+              <input class="form-check-input" type="checkbox" name="hide_cancelled" value="1" {% if hide_cancelled %}checked{% endif %}>
+              <label class="form-check-label small text-muted">Hide Cancelled</label>
             </div>
 
             <a href="?{{ request.GET.urlencode }}&export=1" class="btn btn-sm btn-outline-success ms-auto">
@@ -329,7 +329,7 @@ document.addEventListener("DOMContentLoaded", function () {
 </script>
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-  const checkbox = document.querySelector('input[name="show_cancelled"]');
+  const checkbox = document.querySelector('input[name="hide_cancelled"]');
   if (!checkbox) return;
 
   checkbox.addEventListener("change", function () {

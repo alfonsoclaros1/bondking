@@ -38,6 +38,8 @@ urlpatterns = [
     path("api/dr/<int:pk>/items/", views.dr_items_api, name="dr-items-api"),
     path("dr/table/export/", views.dr_table_export, name="dr-table-export"),
     path("dr/<int:pk>/cancel/", views.cancel_dr, name="dr-cancel"),
+    path("dr/<int:pk>/delete/", views.dr_delete, name="dr-delete"),
+
 
 
     # PO

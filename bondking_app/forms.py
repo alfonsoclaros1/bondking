@@ -141,6 +141,13 @@ class DeliveryReceiptForm(forms.ModelForm):
 
         if current_dm == DeliveryMethod.D2D_STOCKS:
             self.fields["client"].disabled = True
+        # Sample: client is forced and locked + payment/invoice/deposit fields locked
+        if current_dm == DeliveryMethod.SAMPLE:
+            self.fields["client"].disabled = True
+
+            for fname in ["payment_due", "payment_details", "sales_invoice_no", "deposit_slip_no"]:
+                if fname in self.fields:
+                    self.fields[fname].disabled = True
 
         self.fields["payment_method"].required = True
         self.fields["delivery_method"].required = True
@@ -322,8 +329,20 @@ class DeliveryReceiptForm(forms.ModelForm):
         return date
     def clean(self):
         cleaned = super().clean()
+
+        # Default payment_status
         if not cleaned.get("payment_status"):
             cleaned["payment_status"] = "NA"
+
+        # Sample: always blank payment/invoice/deposit fields
+        dm = cleaned.get("delivery_method") or getattr(self.instance, "delivery_method", None)
+        if dm == DeliveryMethod.SAMPLE:
+            cleaned["payment_status"] = "NA"
+            cleaned["payment_due"] = None
+            cleaned["payment_details"] = ""
+            cleaned["sales_invoice_no"] = None
+            cleaned["deposit_slip_no"] = None
+
         return cleaned
 
 
@@ -336,6 +355,8 @@ class DeliveryReceiptItemForm(forms.ModelForm):
         self.stage = kwargs.pop("stage", "NEW_DR")
         super().__init__(*args, **kwargs)
 
+        # ✅ DISPLAY SKU ONLY (not sku-description)
+        self.fields["product"].label_from_instance = lambda obj: obj.sku
         # At creation stage, all item fields editable
         if self.stage != "NEW_DR":
             for name, field in self.fields.items():

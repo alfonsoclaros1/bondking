@@ -1,5 +1,6 @@
 from datetime import date, timedelta, datetime
 import traceback
+from urllib import request
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError, PermissionDenied
 from django.http import JsonResponse,HttpResponse
@@ -203,9 +204,19 @@ def dr_edit(request, pk):
             dr.decline_current_step(request.user)
             return redirect("dr-edit", pk=dr.pk)
         if action == "archive":
-            if dr.payment_status != PaymentStatus.DEPOSITED:
-                messages.error(request, "Only Deposited Delivery Receipts can be archived.")
+            if not (request.user.is_superuser or request.user.groups.filter(name="TopManagement").exists()):
+                messages.error(request, "Only Top Management can archive DRs.")
                 return redirect("dr-kanban")
+
+            # Sample can archive at Delivered; others require Deposited
+            can_archive = (
+                (dr.delivery_method == DeliveryMethod.SAMPLE and dr.delivery_status == DeliveryStatus.DELIVERED)
+                or (dr.payment_status == PaymentStatus.DEPOSITED)
+            )
+            if not can_archive:
+                messages.error(request, "This DR is not yet eligible for archiving.")
+                return redirect("dr-kanban")
+
 
             dr.is_archived = True
             dr.save(update_fields=["is_archived", "updated_at"])
@@ -326,6 +337,7 @@ def dr_edit(request, pk):
         "has_missing_required": bool(missing_fields),
         "prev_dr": prev_dr,
         "next_dr": next_dr,
+        "is_top_management": is_top_management(request.user),
     }
 
     return render(request, "bondking_app/dr_form.html", context)
@@ -406,6 +418,7 @@ def dr_kanban(request):
         ("AccountingHead", "Accounting Head"),
         ("TopManagement", "Top Management"),
     ]
+    top_mgmt = is_top_management(user)
 
     context = {
         "columns_render": columns_render,
@@ -414,6 +427,7 @@ def dr_kanban(request):
         "d2d_stocks": d2d_stocks,
         "column_items": column_items,
         "KANBAN_COLUMNS": KANBAN_COLUMNS,
+        "is_top_management": top_mgmt,
     }
     return render(request, "bondking_app/dr_kanban.html", context)
 # =========================
@@ -579,12 +593,20 @@ def archive_dr(request, dr_id):
         raise PermissionDenied("Only Top Management can archive DRs.")
 
     dr = get_object_or_404(DeliveryReceipt, pk=dr_id)
-    dr.is_archived = True
-    dr.save()
 
+    can_archive = (
+        (dr.delivery_method == DeliveryMethod.SAMPLE and dr.delivery_status == DeliveryStatus.DELIVERED)
+        or (dr.payment_status == PaymentStatus.DEPOSITED)
+    )
+    if not can_archive:
+        return JsonResponse({"ok": False, "error": "This DR is not yet eligible for archiving."}, status=400)
+
+    dr.is_archived = True
+    dr.save(update_fields=["is_archived", "updated_at"])
     dr.log_update(request.user, "Archived DR.")
 
     return JsonResponse({"ok": True})
+
 
 @require_GET
 def d2d_transactions_api(request, pk):
@@ -664,14 +686,17 @@ def dr_table(request):
     # -------------------
     # Show All logic
     # -------------------
-    show_archived = request.GET.get("show_archived", "1") == "1"
-    show_cancelled = request.GET.get("show_cancelled", "1") == "1"
+    hide_archived = request.GET.get("hide_archived") == "1"
+    hide_cancelled = request.GET.get("hide_cancelled") == "1"
     with_sales_invoice = request.GET.get("with_sales_invoice") == "1"
 
 
-
-    if not show_archived:
+    if hide_archived:
         qs = qs.filter(is_archived=False)
+
+    if hide_cancelled:
+        qs = qs.filter(is_cancelled=False)
+
 
     if with_sales_invoice:
         qs = qs.exclude(
@@ -679,10 +704,6 @@ def dr_table(request):
         ).exclude(
             sales_invoice_no__exact=""
         )
-
-
-    if not show_cancelled:
-        qs = qs.filter(is_cancelled=False)
 
 
     # -------------------
@@ -741,8 +762,8 @@ def dr_table(request):
         "payment_methods": PaymentMethod.choices,
         "payment_statuses": PaymentStatus.choices,
         "delivery_statuses": DeliveryStatus.choices,
-        "show_archived": show_archived,
-        "show_cancelled": show_cancelled,
+        "hide_archived": hide_archived,
+        "hide_cancelled": hide_cancelled,
         "sort_by": sort_by,
         "is_top_management": is_top_management(request.user),
         "selected": {
@@ -784,16 +805,33 @@ def dr_items_api(request, pk):
         "dr_number": dr.dr_number,
         "items": items,
     })
-@require_POST
 @login_required
 def dr_delete(request, pk):
-    from .models import DeliveryReceipt, is_top_management
-
-    if not (request.user.is_superuser or is_top_management(request.user)):
-        raise PermissionDenied("Only Top Management can delete DRs.")
+    # Top Management only
+    if not is_top_management(request.user) and not request.user.is_superuser:
+        raise PermissionDenied("Only Top Management can delete Delivery Receipts.")
 
     dr = get_object_or_404(DeliveryReceipt, pk=pk)
+
+    if request.method != "POST":
+        raise PermissionDenied("Invalid request method.")
+
+    confirm_text = request.POST.get("confirm_text", "").strip()
+
+    if confirm_text != dr.dr_number:
+        messages.error(
+            request,
+            "Verification failed. Please type the exact DR Number to confirm deletion."
+        )
+        return redirect("dr-edit", pk=dr.pk)
+
+    dr_number = dr.dr_number
     dr.delete()
+
+    messages.success(
+        request,
+        f"Delivery Receipt {dr_number} was permanently deleted."
+    )
     return redirect("dr-table")
 
 
@@ -1136,8 +1174,8 @@ def dr_table_export(request):
     if request.GET.get("end_date"):
         qs = qs.filter(date_of_order__lte=request.GET["end_date"])
 
-    show_archived = request.GET.get("show_archived") == "1"
-    show_cancelled = request.GET.get("show_cancelled") == "1"
+    hide_archived = request.GET.get("hide_archived", "1") == "1"
+    hide_cancelled = request.GET.get("hide_cancelled", "1") == "1"
     with_sales_invoice = request.GET.get("with_sales_invoice") == "1"
     if with_sales_invoice:
         qs = qs.exclude(
@@ -1146,12 +1184,13 @@ def dr_table_export(request):
             sales_invoice_no__exact=""
         )
 
+    if hide_archived and hide_cancelled:
+        qs = qs.filter(is_archived=False, is_cancelled=False)
 
-
-    if not show_archived:
+    if not hide_archived:
         qs = qs.filter(is_archived=False)
 
-    if not show_cancelled:
+    if not hide_cancelled:
         qs = qs.filter(is_cancelled=False)
 
 
@@ -1233,24 +1272,28 @@ def po_table(request):
     # Show All logic
     # Default = archived only
     # -------------------
-    show_archived = request.GET.get("show_archived") == "1"
-    show_cancelled = request.GET.get("show_cancelled") == "1"
+
+    hide_archived = request.GET.get("hide_archived") == "1"
+    hide_cancelled = request.GET.get("hide_cancelled") == "1"
+
+
+
     # -------------------------------------------------
     # Archived / Cancelled visibility logic
     # -------------------------------------------------
 
-    if show_archived and show_cancelled:
+    if hide_archived and hide_cancelled:
         # SHOW ALL: active + archived + cancelled
         pass
 
-    elif show_cancelled:
+    elif hide_cancelled:
         # Show cancelled (which are archived) + all active
         qs = qs.filter(
             Q(is_cancelled=True) |
             Q(is_archived=False)
         )
 
-    elif show_archived:
+    elif hide_archived:
         # Show archived BUT NOT cancelled, plus active
         qs = qs.filter(
             Q(is_archived=False) |
@@ -1274,7 +1317,7 @@ def po_table(request):
     product_id = request.GET.get("product_id", "")
     start_date = request.GET.get("start_date", "")
     end_date = request.GET.get("end_date", "")
-    sort_by = request.GET.get("sort_by", "date_desc")
+    sort_by = request.GET.get("sort_by", "po_asc")
 
     if paid_to:
         qs = qs.filter(paid_to__icontains=paid_to)
@@ -1328,8 +1371,8 @@ def po_table(request):
             ("APPROVED", "Approved"),
             ("DECLINED", "Declined"),
         ],
-        "show_archived": show_archived,
-        "show_cancelled": show_cancelled,
+        "hide_archived": hide_archived,
+        "hide_cancelled": hide_cancelled,
         "sort_by": sort_by,
         "selected": {
             "paid_to": paid_to,
@@ -1387,26 +1430,26 @@ def po_table_export(request):
         qs = qs.filter(product_id_ref_id=int(product_id))
 
     # Show All logic (default = archived only)
-    show_archived = request.GET.get("show_archived") == "1"
-    show_cancelled = request.GET.get("show_cancelled") == "1"
+    hide_archived = request.GET.get("hide_archived") == "1"
+    hide_cancelled = request.GET.get("hide_cancelled") == "1"
 
 
     # -------------------------------------------------
     # Archived / Cancelled visibility logic
     # -------------------------------------------------
 
-    if show_archived and show_cancelled:
+    if hide_archived and hide_cancelled:
         # SHOW ALL: active + archived + cancelled
         pass
 
-    elif show_cancelled:
+    elif hide_cancelled:
         # Show cancelled (which are archived) + all active
         qs = qs.filter(
             Q(is_cancelled=True) |
             Q(is_archived=False)
         )
 
-    elif show_archived:
+    elif hide_archived:
         # Show archived BUT NOT cancelled, plus active
         qs = qs.filter(
             Q(is_archived=False) |
@@ -1567,7 +1610,7 @@ def inventory_table(request):
     start_date = request.GET.get("start_date")
     end_date = request.GET.get("end_date")
     sort_by = request.GET.get("sort_by", "date_desc")
-    show_cancelled  = request.GET.get("show_cancelled") == "1"
+    hide_cancelled = request.GET.get("hide_cancelled") == "1"
 
     # ==========================
     # UNIFIED MOVEMENT ROWS
@@ -1581,7 +1624,7 @@ def inventory_table(request):
     for item in issuance_items:
         iss = item.issuance
 
-        if not show_cancelled and iss.is_cancelled:
+        if not hide_cancelled and iss.is_cancelled:
             continue
 
         if selected_types and iss.issuance_type not in selected_types:
@@ -1614,8 +1657,8 @@ def inventory_table(request):
     )
 
 
-    if not show_cancelled:
-        dr_items = dr_items.filter(delivery_receipt__is_cancelled=False)
+    if not hide_cancelled:
+        dr_items = dr_items.filter(delivery_receipt__is_cancelled=True)
 
 
     for item in dr_items:
@@ -1736,7 +1779,7 @@ def inventory_table(request):
             "end_date": end_date,
         },
         "sort_by": sort_by,
-        "show_cancelled": show_cancelled,
+        "hide_cancelled": hide_cancelled,
         "is_top_management": is_top_management,
         "is_logistics": is_logistics,
         "can_approve_inventory": can_approve_inventory,

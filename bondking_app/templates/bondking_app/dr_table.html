@@ -163,16 +163,16 @@
             <div class="form-check ms-1">
               <div class="form-check">
                 <input class="form-check-input" type="checkbox"
-                      name="show_archived" value="1"
-                      {% if show_archived %}checked{% endif %}>
-                <label class="form-check-label small text-muted">Show Archived</label>
+                      name="hide_archived" value="1"
+                      {% if hide_archived %}checked{% endif %}>
+                <label class="form-check-label small text-muted">Hide Archived</label>
               </div>
 
               <div class="form-check">
                 <input class="form-check-input" type="checkbox"
-                      name="show_cancelled" value="1"
-                      {% if show_cancelled %}checked{% endif %}>
-                <label class="form-check-label small text-muted">Show Cancelled</label>
+                      name="hide_cancelled" value="1"
+                      {% if hide_cancelled %}checked{% endif %}>
+                <label class="form-check-label small text-muted">Hide Cancelled</label>
               </div>
               <div class="form-check">
                 <input
@@ -184,7 +184,7 @@
                   {% if selected.with_sales_invoice %}checked{% endif %}
                 >
                 <label class="form-check-label small text-muted">
-                  With Sales Invoice
+                  Sales Invoice Only
                 </label>
               </div>
 
@@ -744,7 +744,7 @@ tr.table-danger td button {
 document.addEventListener("DOMContentLoaded", function () {
   document
     .querySelectorAll(
-      'input[name="show_archived"], input[name="show_cancelled"], input[name="with_sales_invoice"]'
+      'input[name="hide_archived"], input[name="hide_cancelled"], input[name="with_sales_invoice"]'
     )
     .forEach(cb => {
       cb.addEventListener("change", function () {

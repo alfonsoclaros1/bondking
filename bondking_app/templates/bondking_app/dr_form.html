@@ -9,12 +9,30 @@
 input[name$="-id"] {
   display: none;
 }
+/* ===== DR ITEMS LAYOUT FIXES ===== */
+.dr-item-row td {
+  vertical-align: middle;
+}
+
+.dr-item-row input,
+.dr-item-row select {
+  width: 100%;
+}
+
+.dr-item-row input[type="number"] {
+  text-align: right;
+}
+
+/* Prevent horizontal scrollbar */
+.table-responsive {
+  overflow-x: hidden;
+}
 </style>
 
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h2 class="mb-0">
-      {% if is_create %}New Delivery Receipt{% else %}Delivery Receipt {{ dr.dr_number }}{% endif %}
+      {% if is_create %}DR {% else %}DR {{ dr.dr_number }}{% endif %}
     </h2>
     <span class="badge bg-secondary text-uppercase">
       Stage: {{ stage }}
@@ -127,9 +145,10 @@ input[name$="-id"] {
   <!-- RIGHT MAIN CONTENT -->
   <div class="col-lg-9">
     <!-- NEXT STEP CARD -->
-{% if not dr.is_archived and stage != "NEW_DR" %}
+    {% if stage != "NEW_DR" and not dr.is_archived or dr.is_cancelled %}
     <div class="card mb-3
-      {% if approval_status == 'DECLINED' %}border-danger
+      {% if dr.is_cancelled %}border-danger
+      {% elif approval_status == 'DECLINED' %}border-danger
       {% elif approval_status == 'PENDING' %}border-warning
       {% else %}border-secondary{% endif %}
     ">
@@ -139,8 +158,14 @@ input[name$="-id"] {
         <h6 class="mb-1">Next Step</h6>
 
         {# ===== STATUS MESSAGE ===== #}
-
-        {% if stage == "DEPOSITED" %}
+        {% if dr.is_cancelled %}
+          <p class="small text-danger fw-semibold mb-2">
+            ⚠ This Delivery Receipt has been cancelled.
+          </p>
+          <p class="small text-muted mb-0">
+            Cancelled DRs cannot proceed further in the workflow.
+          </p>
+        {% elif stage == "DEPOSITED" %}
           <p class="small text-muted mb-2">
             This Delivery Receipt has completed its lifecycle.
           </p>
@@ -168,33 +193,38 @@ input[name$="-id"] {
         {# ===== ACTION BUTTONS ===== #}
 
         <div class="d-flex gap-2">
+          {% if dr.is_cancelled %}
+            <span class="badge bg-warning text-dark">
+              Cancelled
+            </span>
 
-          {% if can_approve %}
-            <button name="action" value="approve" class="btn btn-sm btn-success">
-              Approve
-            </button>
-            <button name="action" value="decline" class="btn btn-sm btn-danger">
-              Decline
-            </button>
+          {% else %}
+            {% if can_approve %}
+              <button name="action" value="approve" class="btn btn-sm btn-success">
+                Approve
+              </button>
+              <button name="action" value="decline" class="btn btn-sm btn-danger">
+                Decline
+              </button>
+            {% endif %}
+
+              {% if stage == "DEPOSITED" or stage == "DELIVERED" and dr.delivery_method == "SAMPLE" %}
+              <button
+                type="button"
+                class="btn btn-sm btn-success"
+                data-bs-toggle="modal"
+                data-bs-target="#archiveModal"
+              >
+                Archive
+              </button>
+
+
+            {% elif not missing_fields and approval_status == 'APPROVED' and next_step %}
+              <a href="{{ kanban_url }}" class="btn btn-sm btn-outline-primary">
+                Go to Kanban
+              </a>
+            {% endif %}
           {% endif %}
-
-            {% if stage == "DEPOSITED" %}
-            <button
-              type="button"
-              class="btn btn-sm btn-success"
-              data-bs-toggle="modal"
-              data-bs-target="#archiveModal"
-            >
-              Archive
-            </button>
-
-
-          {% elif not missing_fields and approval_status == 'APPROVED' and next_step %}
-            <a href="{{ kanban_url }}" class="btn btn-sm btn-outline-primary">
-              Go to Kanban
-            </a>
-          {% endif %}
-
         </div>
 
       </div>
@@ -278,17 +308,17 @@ input[name$="-id"] {
             {{ formset.management_form }}
               {{ f.id }}  <!-- hidden field; REQUIRED -->
             <div class="table-responsive">
-              <table class="table align-middle table-sm">
+              <table class="table table-sm table-borderless align-middle w-100">
                 <thead class="table-light">
                   <tr>
-                    <th style="width: 18%">Item</th>
+                    <th style="width: 22%">Item</th>
                     <th style="width: 32%">Description</th>
-                    <th style="width: 10%">Qty</th>
-                    <th style="width: 15%">Unit Price</th>
-                    <th style="width: 15%">Total</th>
-                    <th style="width: 10%"></th>
+                    <th style="width: 12%">Qty</th>
+                    <th style="width: 17%">Unit Price</th>
+                    <th style="width: 17%">Total</th>
                   </tr>
                 </thead>
+
                 <tbody id="dr-items-body">
                   {% for f in formset.forms %}
                     {{ f.id }}  <!-- hidden field; REQUIRED -->
@@ -322,15 +352,6 @@ input[name$="-id"] {
                           {{ f.instance.line_total }}
                         {% else %}
                           —
-                        {% endif %}
-                      </td>
-                      <td>
-                        {% if formset.can_delete %}
-                          {% if f.instance.pk or not forloop.last %}
-                            <label class="form-check small">
-                              {{ f.DELETE }} Remove
-                            </label>
-                          {% endif %}
                         {% endif %}
                       </td>
                     </tr>
@@ -479,7 +500,7 @@ input[name$="-id"] {
                 {{ form.payment_status }}
               </div>
             </div>
-            {% if not is_create  %}
+            {% if not is_create and is_top_management  %}
             <form method="post"
                   action="{% url 'dr-cancel' dr.id %}"
                   class="d-inline"
@@ -489,6 +510,14 @@ input[name$="-id"] {
                 Cancel DR
               </button>
             </form>
+              <!-- Delete DR trigger -->
+            <button
+              type="button"
+              class="btn btn-danger"
+              data-bs-toggle="modal"
+              data-bs-target="#deleteDrModal">
+              Delete DR
+            </button>
           {% endif %}
 
             <div class="mb-3 mt-3">
@@ -605,6 +634,65 @@ input[name$="-id"] {
 
   </form>
 </div>
+{% if is_top_management %}
+<div class="modal fade" id="deleteDrModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title text-danger">Delete Delivery Receipt</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <form method="post" action="{% url 'dr-delete' dr.id %}">
+        {% csrf_token %}
+
+        <div class="modal-body">
+          <p class="text-danger fw-semibold">
+            This will permanently delete this Delivery Receipt.
+          </p>
+
+          <p class="small text-muted">
+            This action <strong>cannot be undone</strong>.
+          </p>
+
+          <hr>
+
+          <p class="small">
+            To confirm, type the DR Number exactly:
+          </p>
+
+          <div class="mb-2">
+            <input
+              type="text"
+              name="confirm_text"
+              class="form-control"
+              placeholder="Type {{ dr.dr_number }}"
+              required
+              autocomplete="off">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            data-bs-dismiss="modal">
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            class="btn btn-danger">
+            Permanently Delete
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <!-- PROOF OF DELIVERY MODAL -->
  <div class="modal fade" id="podModal" tabindex="-1">
@@ -810,7 +898,7 @@ document.addEventListener("DOMContentLoaded", function () {
         fetch(getProductUrl(id))
           .then(r => r.json())
           .then(data => {
-            if (descInput && !descInput.value) descInput.value = data.name || "";
+            if (descInput) descInput.value = data.name || "";
             if (priceInput && !priceInput.value && data.default_unit_price !== null) {
               priceInput.value = data.default_unit_price;
             }

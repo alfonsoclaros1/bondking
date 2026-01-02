@@ -80,14 +80,13 @@
                   <button type="button" class="btn btn-success btn-sm btn-approve">✓</button>
                   <button type="button" class="btn btn-danger btn-sm btn-decline">✕</button>
                 </div>
-                {% elif col.key == "DEPOSITED" and user.is_superuser %}
+                {% elif is_top_management and col.key == "DEPOSITED" or is_top_management and col.key == "DELIVERED" and dr.delivery_method == "SAMPLE" %}
                   <div class="d-flex justify-content-start mb-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm btn-archive">
                       Archive
                     </button>
                   </div>
                 {% endif %}
-
 
                 {# Notion-style title + subtitle #}
                 <div class="mb-1">

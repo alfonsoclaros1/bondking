@@ -116,7 +116,7 @@ class DeliveryMethod(models.TextChoices):
     DELIVERY = "DELIVERY", "Delivery"
     D2D_STOCKS = "D2D_STOCKS", "D2D Stocks"
     DOOR_TO_DOOR = "DOOR_TO_DOOR", "Door to Door"
-
+    SAMPLE = "SAMPLE", "Sample"
 
 
 class InventoryIssuanceType(models.TextChoices):
@@ -543,6 +543,9 @@ class DeliveryReceipt(models.Model):
         pm = dr.payment_method
         dm = dr.delivery_method
 
+        if dm == DeliveryMethod.SAMPLE:
+            return ["NEW_DR", "FOR_DELIVERY", "DELIVERED"]
+        
         if dm == DeliveryMethod.DOOR_TO_DOOR and pm == PaymentMethod.CASH:
             return ["NEW_DR", "DELIVERED", "FOR_DEPOSIT", "DEPOSITED"]
 
@@ -994,6 +997,17 @@ class DeliveryReceipt(models.Model):
             self.delivery_status = DeliveryStatus.NEW_DR
             self.payment_status = PaymentStatus.NA
             self.approval_status = ApprovalStatus.PENDING
+       
+        # Sample: force client + strip payment/invoice/deposit fields (always blank)
+        if self.delivery_method == DeliveryMethod.SAMPLE:
+            self.client = DeliveryReceipt.get_sample_client()
+            self.payment_status = PaymentStatus.NA
+
+            # Always blank these fields for Sample
+            self.payment_due = None
+            self.payment_details = ""
+            self.sales_invoice_no = None
+            self.deposit_slip_no = None
 
         if self.delivery_method == DeliveryMethod.D2D_STOCKS:
             self.client = DeliveryReceipt.get_d2d_stocks_client()
@@ -1018,6 +1032,22 @@ class DeliveryReceipt(models.Model):
 
         # D2D Stocks: should never participate in normal workflow moves (handled in move_to_column)
         # but we keep statuses default as you requested.
+    @staticmethod
+    def get_sample_client():
+        from .models import Client
+
+        client, _ = Client.objects.get_or_create(
+            company_name="Sample",
+            defaults={
+                "street_number": "Internal",
+                "street_name": "Internal",
+                "barangay": "Internal",
+                "province_state": "Internal",
+                "city_municipality": "Internal",
+                "postal_code": "Internal",
+            },
+        )
+        return client
 
     @staticmethod
     def get_d2d_stocks_client():
@@ -1060,6 +1090,8 @@ class DeliveryReceipt(models.Model):
         pm = self.payment_method
         dm = self.delivery_method
 
+        if dm == DeliveryMethod.SAMPLE:
+            return ["NEW_DR", "FOR_DELIVERY", "DELIVERED"]
         # Door to Door + Cash
         if dm == DeliveryMethod.DOOR_TO_DOOR and pm == PaymentMethod.CASH:
             return [
@@ -1313,7 +1345,6 @@ class PurchaseOrder(models.Model):
     # -------------------------
     # PO Kanban helpers
     # -------------------------
-    @staticmethod
     @staticmethod
     def resolve_actor_role(user, simulated_role=None):
         if user.is_superuser:
