@@ -90,6 +90,8 @@ class DeliveryReceiptForm(forms.ModelForm):
             "sales_invoice_no", 
             "deposit_slip_no",      
             "remarks",
+            "delivery_status",
+            "payment_status",
         ]
         widgets = { 
             "date_of_order": forms.DateInput(attrs={"type": "date"}),
@@ -97,6 +99,8 @@ class DeliveryReceiptForm(forms.ModelForm):
             "payment_due": forms.DateInput(attrs={"type": "date"}),
             "sales_invoice_no": forms.TextInput(attrs={"class": "form-control"}),
             "deposit_slip_no": forms.TextInput(attrs={"class": "form-control"}),
+            "delivery_status": forms.Select(attrs={"class": "form-select"}),
+            "payment_status": forms.Select(attrs={"class": "form-select"}),
         }
 
     def __init__(self, *args, user=None, stage=None, **kwargs):
@@ -109,6 +113,14 @@ class DeliveryReceiptForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
 
+        # Default: lock these fields
+        self.fields["delivery_status"].disabled = True
+        self.fields["payment_status"].disabled = True
+
+        # Only Top Management can edit
+        if self.user and is_top_management(self.user):
+            self.fields["delivery_status"].disabled = False
+            self.fields["payment_status"].disabled = False
 
         # Assign preview DR number if creating
         if not self.instance.pk:
@@ -285,6 +297,9 @@ class DeliveryReceiptForm(forms.ModelForm):
         # 7. remarks ALWAYS editable
         # ------------------------------------------------------------
         self.fields["remarks"].disabled = False
+        if self.user and (self.user.is_superuser or is_top_management(self.user)):
+            self.fields["delivery_status"].disabled = False
+            self.fields["payment_status"].disabled = False
                 
     def clean_date_of_delivery(self):
         date = self.cleaned_data.get("date_of_delivery")

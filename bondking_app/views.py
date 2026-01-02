@@ -625,8 +625,8 @@ def dr_table(request):
     # -------------------
     # Show All logic
     # -------------------
-    show_archived = request.GET.get("show_archived") == "1"
-    show_cancelled = request.GET.get("show_cancelled") == "1"
+    show_archived = request.GET.get("show_archived", "1") == "1"
+    show_cancelled = request.GET.get("show_cancelled", "1") == "1"
     with_sales_invoice = request.GET.get("with_sales_invoice") == "1"
 
 
@@ -656,7 +656,7 @@ def dr_table(request):
     delivery_status = request.GET.get("delivery_status", "")
     start_date = request.GET.get("start_date", "")
     end_date = request.GET.get("end_date", "")
-    sort_by = request.GET.get("sort_by", "date_desc")
+    sort_by = request.GET.get("sort_by", "dr_asc")
 
     if client_id.isdigit():
         qs = qs.filter(client_id=int(client_id))
