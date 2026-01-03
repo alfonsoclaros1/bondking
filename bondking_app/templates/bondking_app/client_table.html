@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}Clients{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <h4 class="mb-0">Clients</h4>
+    <a href="{% url 'client-create' %}" class="btn btn-primary btn-sm">
+      + New Client
+    </a>
+  </div>
+
+  <!-- FILTERS -->
+  <form method="get" class="card card-body mb-3">
+    <div class="row g-2">
+      <div class="col-md-3">
+        <input
+          type="text"
+          name="company"
+          class="form-control form-control-sm"
+          placeholder="Company"
+          value="{{ selected.company }}"
+          list="company-list">
+
+        <datalist id="company-list">
+          {% for c in suggestions.companies %}
+            <option value="{{ c }}"></option>
+          {% endfor %}
+        </datalist>
+      </div>
+
+      <div class="col-md-3">
+        <input
+          type="text"
+          name="owner"
+          class="form-control form-control-sm"
+          placeholder="Owner"
+          value="{{ selected.owner }}"
+          list="owner-list">
+
+        <datalist id="owner-list">
+          {% for o in suggestions.owners %}
+            <option value="{{ o }}"></option>
+          {% endfor %}
+        </datalist>
+
+      </div>
+
+      <div class="col-md-3">
+        <input
+          type="text"
+          name="contact"
+          class="form-control form-control-sm"
+          placeholder="Contact Number"
+          value="{{ selected.contact }}"
+          list="contact-list">
+
+        <datalist id="contact-list">
+          {% for c in suggestions.contacts %}
+            <option value="{{ c }}"></option>
+          {% endfor %}
+        </datalist>
+
+      </div>
+
+      <div class="col-md-3 d-flex gap-2">
+        <button class="btn btn-sm btn-primary">Filter</button>
+        <a href="{% url 'client-table' %}" class="btn btn-sm btn-outline-secondary">Reset</a>
+      </div>
+    </div>
+  </form>
+
+  <!-- TABLE -->
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Company</th>
+            <th>Owner</th>
+            <th>Contact</th>
+            <th>Address</th>
+            <th>Created</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in page_obj %}
+          <tr>
+            <td class="fw-semibold">{{ c.company_name }}</td>
+            <td>{{ c.name_of_owner }}</td>
+            <td>{{ c.contact_number }}</td>
+            <td>{{ c.full_address }}</td>
+            <td>{{ c.created_at|date:"Y-m-d" }}</td>
+            <td class="text-end">
+              <a href="{% url 'client-edit' c.id %}"
+                 class="btn btn-sm btn-outline-primary">
+                Edit
+              </a>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="6" class="text-center text-muted py-4">
+              No clients found.
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+{% if page_obj.paginator.num_pages > 1 %}
+<nav class="mt-3">
+  <ul class="pagination pagination-sm justify-content-center">
+
+    {% if page_obj.has_previous %}
+      <li class="page-item">
+        <a class="page-link"
+           href="?page={{ page_obj.previous_page_number }}">
+          &laquo;
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled">
+        <span class="page-link">&laquo;</span>
+      </li>
+    {% endif %}
+
+    {% for num in page_obj.paginator.page_range %}
+      {% if num == page_obj.number %}
+        <li class="page-item active">
+          <span class="page-link">{{ num }}</span>
+        </li>
+      {% else %}
+        <li class="page-item">
+          <a class="page-link" href="?page={{ num }}">{{ num }}</a>
+        </li>
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link"
+           href="?page={{ page_obj.next_page_number }}">
+          &raquo;
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled">
+        <span class="page-link">&raquo;</span>
+      </li>
+    {% endif %}
+
+  </ul>
+</nav>
+{% endif %}
+
+</div>
+{% endblock %}

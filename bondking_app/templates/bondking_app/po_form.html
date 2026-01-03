@@ -227,7 +227,12 @@
 
     <!-- ACTIONS -->
     <div class="d-flex justify-content-end gap-2">
-      <a href="{% url 'po-table' %}" class="btn btn-outline-secondary">Back</a>
+      <button
+        type="button"
+        class="btn btn-outline-secondary"
+        id="discard-btn">
+        Discard
+      </button>
       {% if can_edit %}
       <button type="submit" name="action" value="save" class="btn btn-primary">
         {% if is_create %}Create RFP{% else %}Save Changes{% endif %}
@@ -334,6 +339,44 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const form = document.querySelector("form");
+  const discardBtn = document.getElementById("discard-btn");
+
+  if (!form || !discardBtn) return;
+
+  let isDirty = false;
+
+  // Mark dirty on any user input
+  form.querySelectorAll("input, select, textarea").forEach(el => {
+    el.addEventListener("change", () => isDirty = true);
+    el.addEventListener("input", () => isDirty = true);
+  });
+
+  discardBtn.addEventListener("click", function () {
+    if (!isDirty) {
+      window.history.back();
+      return;
+    }
+
+    const ok = confirm(
+      "You have unsaved changes.\n\nIf you leave now, your changes will be lost.\n\nContinue?"
+    );
+
+    if (ok) {
+      window.history.back();
+    }
+  });
+
+  // Protect browser navigation (refresh / close tab)
+  window.addEventListener("beforeunload", function (e) {
+    if (!isDirty) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
+});
+</script>
 
 <script>
 const productIdModalEl = document.getElementById("productIdModal");

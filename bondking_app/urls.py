@@ -28,6 +28,10 @@ urlpatterns = [
     # Client quick add
     path("clients/new/", views.client_create, name="client-create"),
     path("api/clients/<int:pk>/", views.client_detail_api, name="client-detail-api"),
+    path("clients/", views.client_table, name="client-table"),
+    path("clients/<int:pk>/edit/", views.client_edit, name="client-edit"),
+
+    # DR APIs and actions
     path("api/products/<int:pk>/", views.product_detail_api, name="product-detail-api"),
     path("dr/<int:pk>/approve/", views.dr_approve, name="dr-approve"),
     path("dr/<int:pk>/decline/", views.dr_decline, name="dr-decline"),

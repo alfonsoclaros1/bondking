@@ -2082,3 +2082,97 @@ def po_print(request, pk):
     response = HttpResponse(pdf, content_type="application/pdf")
     response["Content-Disposition"] = f'inline; filename="PO-{po.po_number}.pdf"'
     return response
+
+@login_required
+def client_table(request):
+    qs = Client.objects.all()
+
+    # -------------------
+    # Filters
+    # -------------------
+    company = request.GET.get("company", "")
+    owner = request.GET.get("owner", "")
+    contact = request.GET.get("contact", "")
+    sort_by = request.GET.get("sort_by", "company_asc")
+    companies = (
+        Client.objects
+        .exclude(company_name__isnull=True)
+        .exclude(company_name__exact="")
+        .values_list("company_name", flat=True)
+        .distinct()
+        .order_by("company_name")
+    )
+
+    owners = (
+        Client.objects
+        .exclude(name_of_owner__isnull=True)
+        .exclude(name_of_owner__exact="")
+        .values_list("name_of_owner", flat=True)
+        .distinct()
+        .order_by("name_of_owner")
+    )
+
+    contacts = (
+        Client.objects
+        .exclude(contact_number__isnull=True)
+        .exclude(contact_number__exact="")
+        .values_list("contact_number", flat=True)
+        .distinct()
+    )
+
+    if company:
+        qs = qs.filter(company_name__icontains=company)
+
+    if owner:
+        qs = qs.filter(name_of_owner__icontains=owner)
+
+    if contact:
+        qs = qs.filter(contact_number__icontains=contact)
+
+    SORT_OPTIONS = {
+        "company_asc": "company_name",
+        "company_desc": "-company_name",
+        "created_desc": "-created_at",
+        "created_asc": "created_at",
+    }
+    qs = qs.order_by(SORT_OPTIONS.get(sort_by, "company_name"))
+
+    # -------------------
+    # Pagination
+    # -------------------
+    paginator = Paginator(qs, 100)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+
+    return render(request, "bondking_app/client_table.html", {
+        "page_obj": page_obj,
+        "sort_by": sort_by,
+        "selected": {
+            "company": company,
+            "owner": owner,
+            "contact": contact,
+        },
+        "suggestions": {
+            "companies": companies,
+            "owners": owners,
+            "contacts": contacts,
+        },
+    })
+
+
+@login_required
+def client_edit(request, pk):
+    client = get_object_or_404(Client, pk=pk)
+
+    if request.method == "POST":
+        form = ClientForm(request.POST, instance=client)
+        if form.is_valid():
+            form.save()
+            return redirect("client-table")
+    else:
+        form = ClientForm(instance=client)
+
+    return render(request, "bondking_app/client_form.html", {
+        "form": form,
+        "client": client,
+        "is_create": False,
+    })

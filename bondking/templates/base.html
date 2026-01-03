@@ -71,6 +71,9 @@
             <li class="nav-item">
               <a class="nav-link" href="{% url 'inventory-table' %}">Inventory</a>
             </li>
+            <li class="nav-item">
+              <a class="nav-link" href="{% url 'client-table' %}">Clients</a>
+            </li>
           </ul>
 
           {% if request.user.is_authenticated %}
