@@ -504,6 +504,8 @@ class DeliveryReceipt(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     is_archived = models.BooleanField(default=False)
     is_cancelled = models.BooleanField(default=False)
+    reject_problem = models.TextField(blank=True, default="")
+    reject_solution = models.TextField(blank=True, default="")
 
     source_dr = models.ForeignKey(
         "self",
@@ -702,6 +704,10 @@ class DeliveryReceipt(models.Model):
         is_backward = target_idx < current_idx
 
         pm = str(self.payment_method).upper()
+        if self.approval_status == ApprovalStatus.DECLINED and is_forward:
+            raise ValidationError(
+                "This DR was rejected and must be resolved before moving forward."
+            )
 
         # -------------------------------
         # 1. Role permissions (meta-driven)

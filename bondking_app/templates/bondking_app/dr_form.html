@@ -566,10 +566,19 @@ input[name$="-id"] {
             >
             Discard
           </button>
-
+          {% if dr.approval_status == "DECLINED" %}
+            <button
+              type="button"
+              class="btn btn-success"
+              data-bs-toggle="modal"
+              data-bs-target="#resolveModal">
+              Resolve
+            </button>
+          {% else %}
           <button type="submit" name="action" value="save" class="btn btn-primary px-4">
             Save
           </button>
+          {% endif %}
         </div>
 
       </div>
@@ -748,6 +757,45 @@ input[name$="-id"] {
         </form>
       </div>
 
+    </div>
+  </div>
+</div>
+
+<!-- RESOLVE REJECTION MODAL -->
+
+<div class="modal fade" id="resolveModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="resolve">
+
+        <div class="modal-header">
+          <h5 class="modal-title">Resolve Rejection</h5>
+        </div>
+
+        <div class="modal-body">
+          <div class="mb-2">
+            <label class="form-label">Rejected Because</label>
+            <textarea class="form-control" rows="3" readonly>
+              {{ dr.reject_problem }}
+            </textarea>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label">What was fixed?</label>
+            <textarea
+              name="resolved_note"
+              class="form-control"
+              rows="4"
+              required></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-success">Mark as Resolved</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>

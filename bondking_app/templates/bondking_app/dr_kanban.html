@@ -634,58 +634,41 @@
         });
       });
     }
-
     function refreshCardAppearance(card, approvalStatus) {
+      // Always keep the dataset in sync
       card.dataset.approvalStatus = approvalStatus;
 
-      // Reset color classes
+      // Reset visual state
       card.classList.remove('kanban-card-pending', 'kanban-card-declined');
 
-      // Look for an existing approval button row
-      let btnRow = card.querySelector('.kanban-approval-buttons');
+      // Find existing approval buttons (rendered by Django ONLY)
+      const btnRow = card.querySelector('.kanban-approval-buttons');
 
       if (approvalStatus === 'PENDING') {
-        // Style for pending
+        // Pending = waiting for approval → cannot be dragged
         card.classList.add('kanban-card-pending');
         card.setAttribute('draggable', 'false');
 
-        // If no buttons yet, create them
-        if (!btnRow) {
-          btnRow = document.createElement('div');
-          btnRow.className = 'd-flex justify-content-end gap-1 mb-2 kanban-approval-buttons';
+        // IMPORTANT:
+        // Do NOT create buttons here.
+        // If buttons exist, Django already decided the user can see them.
+        // If they don't exist, user is NOT an approver.
+      } 
+      else {
+        // Non-pending → draggable again
+        card.setAttribute('draggable', 'true');
 
-          const approveBtn = document.createElement('button');
-          approveBtn.type = 'button';
-          approveBtn.className = 'btn btn-success btn-sm btn-approve';
-          approveBtn.textContent = '✓';
-
-          const declineBtn = document.createElement('button');
-          declineBtn.type = 'button';
-          declineBtn.className = 'btn btn-danger btn-sm btn-decline';
-          declineBtn.textContent = '✕';
-
-          btnRow.appendChild(approveBtn);
-          btnRow.appendChild(declineBtn);
-
-          const cardBody = card.querySelector('.card-body');
-          if (cardBody) {
-            // Insert above the title (at the top of the body)
-            cardBody.insertBefore(btnRow, cardBody.firstChild);
-          }
-        }
-      } else {
-        // Not pending anymore → remove buttons if they exist
+        // Remove approval buttons if status changed away from PENDING
         if (btnRow) {
           btnRow.remove();
         }
-        card.setAttribute('draggable', 'true');
 
+        // Declined visual state
         if (approvalStatus === 'DECLINED') {
           card.classList.add('kanban-card-declined');
         }
       }
     }
-
 
     function recomputeCountsAndEmpty() {
       document.querySelectorAll('.kanban-column').forEach(col => {

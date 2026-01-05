@@ -158,6 +158,8 @@ def dr_edit(request, pk):
     dr = get_object_or_404(DeliveryReceipt, pk=pk)
     stage = dr.get_current_column()
     updates = dr.updates.all()
+    action = None
+
 
     role = get_user_role(request.user)
     is_super = request.user.is_superuser
@@ -188,8 +190,6 @@ def dr_edit(request, pk):
         .order_by("id")
         .first()
     )
-
-
     # ==========================
     # ACTION HANDLING (PO STYLE)
     # ==========================
@@ -299,7 +299,7 @@ def dr_edit(request, pk):
     current = dr.get_current_column()
     current_index = steps.index(current) if current in steps else -1
 
-    for idx, s in steps:
+    for idx, s in enumerate(steps):
         lifecycle_steps.append({
             "key": s,
             "label": s.replace("_", " ").title(),
@@ -312,6 +312,39 @@ def dr_edit(request, pk):
 
 
     kanban_url = reverse("dr-kanban")  # adjust name if needed
+
+    if action == "resolve":
+        if dr.approval_status != ApprovalStatus.DECLINED:
+            messages.error(request, "This DR is not rejected.")
+            return redirect("dr-edit", pk=dr.pk)
+
+        resolved_note = (request.POST.get("resolved_note") or "").strip()
+        if not resolved_note:
+            messages.error(request, "Resolution note is required.")
+            return redirect("dr-edit", pk=dr.pk)
+
+        # Permission: only roles that can move this step
+        meta = DR_STEP_META.get(dr.get_current_column(), {})
+        allowed_roles = meta.get("forward_roles", set())
+        role = get_user_role(request.user)
+
+        if role not in allowed_roles and not request.user.is_superuser:
+            messages.error(request, "You are not allowed to resolve this DR.")
+            return redirect("dr-edit", pk=dr.pk)
+
+        dr.reject_solution = resolved_note
+        dr.approval_status = ApprovalStatus.PENDING
+        dr.save(update_fields=["reject_solution", "approval_status", "updated_at"])
+
+        dr.log_update(
+            request.user,
+            "Resolved rejection and returned DR to Pending approval.",
+            user_notes=resolved_note,
+        )
+
+        messages.success(request, "DR resolved and returned for approval.")
+        return redirect("dr-edit", pk=dr.pk)
+
 
     # ==========================
     # CONTEXT
@@ -585,11 +618,25 @@ def dr_decline(request, pk):
 
     # First attempt the decline
     try:
+        reject_problem = (request.POST.get("reject_problem") or "").strip()
+        reject_solution = (request.POST.get("reject_solution") or "").strip()
+
+        if not reject_problem:
+            return JsonResponse(
+                {"ok": False, "error": "Rejection reason is required."},
+                status=400,
+            )
+
+        dr.reject_problem = reject_problem
+        dr.reject_solution = reject_solution
+
         dr.decline_current_step(
             request.user,
-            user_notes=notes,
+            user_notes=reject_problem,
             simulated_role=sim_role,
         )
+        dr.save(update_fields=["reject_problem", "reject_solution", "approval_status", "updated_at"])
+
     except (ValidationError, PermissionDenied) as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=400)
 
