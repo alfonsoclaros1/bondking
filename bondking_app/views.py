@@ -299,7 +299,7 @@ def dr_edit(request, pk):
     current = dr.get_current_column()
     current_index = steps.index(current) if current in steps else -1
 
-    for s in steps:
+    for idx, s in steps:
         lifecycle_steps.append({
             "key": s,
             "label": s.replace("_", " ").title(),
