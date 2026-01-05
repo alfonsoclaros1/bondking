@@ -222,7 +222,7 @@ def dr_edit(request, pk):
             dr.save(update_fields=["is_archived", "updated_at"])
             dr.log_update(request.user, "Delivery Receipt was archived.")
             messages.success(request, "Delivery Receipt archived successfully.")
-            return redirect("dr-kanban")
+            return redirect("dr-edit", pk=dr.pk)
 
     # ==========================
     # FORMS (SAVE CHANGES ONLY)
@@ -297,13 +297,14 @@ def dr_edit(request, pk):
     lifecycle_steps = []
     steps = dr.get_lifecycle_steps()
     current = dr.get_current_column()
+    current_index = steps.index(current) if current in steps else -1
 
     for s in steps:
         lifecycle_steps.append({
             "key": s,
             "label": s.replace("_", " ").title(),
             "is_current": s == current,
-            "is_done": steps.index(s) < steps.index(current),
+            "is_done": idx < current_index if current_index >= 0 else False,
         })
 
     current_step, next_step = dr.get_current_and_next_step()
@@ -362,7 +363,7 @@ def dr_kanban(request):
     .filter(is_archived=False, is_cancelled=False)
     .select_related("client", "agent")
     .order_by("-created_at")
-)
+    )
 
     normal_drs = active_drs.exclude(
         delivery_method=DeliveryMethod.D2D_STOCKS
@@ -373,15 +374,44 @@ def dr_kanban(request):
     )
     column_items = {col: [] for col in KANBAN_COLUMNS}
 
+    user = request.user
+    role = get_user_role(user)
+    is_super = user.is_superuser
+    top_mgmt = is_top_management(user)
+
     for dr in normal_drs:
-        column_items[dr.get_current_column()].append(dr)
+        current_step = dr.get_current_column()
+        step_meta = DR_STEP_META.get(current_step, {})
+
+        dr.can_approve = (
+            dr.approval_status == ApprovalStatus.PENDING
+            and (
+                is_super
+                or top_mgmt
+                or role in step_meta.get("approver_roles", set())
+            )
+        )
+
+        dr.can_decline = (
+            dr.approval_status == ApprovalStatus.PENDING
+            and (
+                is_super
+                or top_mgmt
+                or role in step_meta.get("decliner_roles", set())
+            )
+        )
+
+        column_items[current_step].append(dr)
+
 
 
 
     d2d_stocks = DeliveryReceipt.objects.filter(
         delivery_method=DeliveryMethod.D2D_STOCKS,
         is_archived=False
-)
+    )
+
+
 
     # Labels for each column
     column_labels = {
@@ -409,6 +439,8 @@ def dr_kanban(request):
 
     user = request.user
     is_admin_like = user.is_superuser 
+    role = get_user_role(user)
+
     available_roles = [
         ("SalesAgent", "Sales Agent"),
         ("SalesHead", "Sales Head"),
@@ -1997,9 +2029,6 @@ def product_id_quick_create(request):
 def dr_print(request, pk):
     dr = get_object_or_404(DeliveryReceipt, pk=pk)
 
-    if dr.approval_status != ApprovalStatus.APPROVED:
-        raise PermissionDenied("Only approved Delivery Receipts can be printed.")
-
     template = get_template("bondking_app/dr_print.html")
     html = template.render({
         "dr": dr,
@@ -2034,6 +2063,7 @@ def dr_print(request, pk):
     response = HttpResponse(pdf, content_type="application/pdf")
     response["Content-Disposition"] = f'inline; filename="DR-{dr.dr_number}.pdf"'
     return response
+
 @login_required
 def po_print(request, pk):
     po = get_object_or_404(PurchaseOrder, pk=pk)
@@ -2091,8 +2121,9 @@ def client_table(request):
     # Filters
     # -------------------
     company = request.GET.get("company", "")
-    owner = request.GET.get("owner", "")
-    contact = request.GET.get("contact", "")
+    agent = request.GET.get("agent", "")
+    city = request.GET.get("city", "")
+
     sort_by = request.GET.get("sort_by", "company_asc")
     companies = (
         Client.objects
@@ -2103,31 +2134,31 @@ def client_table(request):
         .order_by("company_name")
     )
 
-    owners = (
-        Client.objects
-        .exclude(name_of_owner__isnull=True)
-        .exclude(name_of_owner__exact="")
-        .values_list("name_of_owner", flat=True)
+    agents = (
+        User.objects
+        .filter(clients__isnull=False)
         .distinct()
-        .order_by("name_of_owner")
+        .order_by("username")
     )
 
-    contacts = (
+    cities = (
         Client.objects
-        .exclude(contact_number__isnull=True)
-        .exclude(contact_number__exact="")
-        .values_list("contact_number", flat=True)
+        .exclude(city_municipality__isnull=True)
+        .exclude(city_municipality__exact="")
+        .values_list("city_municipality", flat=True)
         .distinct()
+        .order_by("city_municipality")
     )
 
     if company:
         qs = qs.filter(company_name__icontains=company)
 
-    if owner:
-        qs = qs.filter(name_of_owner__icontains=owner)
+    if agent.isdigit():
+        qs = qs.filter(agent_id=int(agent))
 
-    if contact:
-        qs = qs.filter(contact_number__icontains=contact)
+    if city:
+        qs = qs.filter(city_municipality__icontains=city)
+
 
     SORT_OPTIONS = {
         "company_asc": "company_name",
@@ -2148,13 +2179,13 @@ def client_table(request):
         "sort_by": sort_by,
         "selected": {
             "company": company,
-            "owner": owner,
-            "contact": contact,
+            "agent": agent,
+            "city": city,
         },
         "suggestions": {
             "companies": companies,
-            "owners": owners,
-            "contacts": contacts,
+            "agents": agents,
+            "cities": cities,
         },
     })
 

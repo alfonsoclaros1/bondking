@@ -357,6 +357,7 @@ class Command(BaseCommand):
         if df_clients is None:
             raise Exception("Missing required sheet: clients")
 
+
         require_cols(
             df_clients,
             {
@@ -366,6 +367,7 @@ class Command(BaseCommand):
                 "barangay",
                 "city_municipality",
                 "province_state",
+                "agent",  
             },
             "clients",
         )
@@ -377,6 +379,13 @@ class Command(BaseCommand):
             company_name = norm_str(r.get("company_name"))
             if not company_name:
                 continue
+            agent_raw = norm_str(r.get("agent"))
+            agent_username = agent_raw.upper() if agent_raw else "NA"
+            if agent_username in {"NA", "N/A"}:
+                agent = None
+            else:
+                agent = user_cache.get(agent_username) or legacy_user
+            agent = user_cache.get(agent_username) or legacy_user if agent_username else None
             key = company_name.strip().upper()
             raw_since = norm_str(r.get("since"))
             since = raw_since[:4] if raw_since.isdigit() else None
@@ -386,6 +395,7 @@ class Command(BaseCommand):
                 company_name=company_name,
                 defaults={
                     "name_of_owner": norm_str(r.get("name_of_owner")),
+                    "agent": agent,
                     "rented": to_bool(r.get("rented"), default=False),
                     "since": since,
                     "unit_room": norm_str(r.get("unit_room")),

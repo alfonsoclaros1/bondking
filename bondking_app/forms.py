@@ -48,10 +48,17 @@ class ClientForm(forms.ModelForm):
         def clean_rented(self):
             value = self.cleaned_data["rented"]
             return value == "rented"
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.fields["agent"].queryset = User.objects.filter(
+                groups__name__in=["SalesAgent", "SalesHead"]
+            ).distinct()
+            self.fields["agent"].required = False
 
         fields = [
             "company_name",
             "name_of_owner",
+            "agent",            
             "rented",
             "since",
             "contact_number",

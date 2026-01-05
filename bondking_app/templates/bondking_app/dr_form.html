@@ -561,7 +561,9 @@ input[name$="-id"] {
           <button
             type="button"
             class="btn btn-outline-secondary"
-            id="discard-btn">
+            id="discard-btn"
+            style="margin-right: 10px;"
+            >
             Discard
           </button>
 
@@ -753,44 +755,73 @@ input[name$="-id"] {
 {% endblock %}
 
 {% block extra_js %}
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   const form = document.querySelector("form");
   const discardBtn = document.getElementById("discard-btn");
 
-  if (!form || !discardBtn) return;
+  if (!form) return;
 
   let isDirty = false;
+  let isSubmitting = false;
 
-  // Mark dirty on any user input
-  form.querySelectorAll("input, select, textarea").forEach(el => {
-    el.addEventListener("change", () => isDirty = true);
-    el.addEventListener("input", () => isDirty = true);
+  // Capture initial state
+  const initialData = new FormData(form);
+
+  function hasFormChanged() {
+    const currentData = new FormData(form);
+    for (let [key, value] of currentData.entries()) {
+      if (initialData.get(key) !== value) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Track real user changes only
+  form.addEventListener("input", () => {
+    isDirty = hasFormChanged();
   });
 
-  discardBtn.addEventListener("click", function () {
-    if (!isDirty) {
-      window.history.back();
-      return;
-    }
-
-    const ok = confirm(
-      "You have unsaved changes.\n\nIf you leave now, your changes will be lost.\n\nContinue?"
-    );
-
-    if (ok) {
-      window.history.back();
-    }
+  form.addEventListener("change", () => {
+    isDirty = hasFormChanged();
   });
 
-  // Protect browser navigation (refresh / close tab)
+  // SAVE → disable warning
+  form.addEventListener("submit", () => {
+    isSubmitting = true;
+    isDirty = false;
+  });
+
+  // Discard button
+  if (discardBtn) {
+    discardBtn.addEventListener("click", function () {
+      if (!hasFormChanged()) {
+        window.history.back();
+        return;
+      }
+
+      const ok = confirm(
+        "You have unsaved changes.\n\nIf you leave now, your changes will be lost.\n\nContinue?"
+      );
+
+      if (ok) {
+        window.history.back();
+      }
+    });
+  }
+
+  // Browser unload protection
   window.addEventListener("beforeunload", function (e) {
-    if (!isDirty) return;
+    if (!isDirty || isSubmitting) return;
     e.preventDefault();
     e.returnValue = "";
   });
 });
 </script>
+
+
 
 <script>
 function formatPeso(value) {

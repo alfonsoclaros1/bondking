@@ -220,6 +220,14 @@ class Client(models.Model):
         max_length=20,
         choices=PaymentMethod.choices,
         blank=True,
+    )    
+    agent = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="clients",
+        help_text="Assigned sales agent"
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -970,7 +978,7 @@ class DeliveryReceipt(models.Model):
 
     @classmethod
     def get_next_dr_number(cls):
-        year = timezone.now().year
+        year = 6202
         prefix = f"{year}-"
         last = (
             cls.objects

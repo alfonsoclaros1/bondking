@@ -75,7 +75,7 @@
             >
               <div class="card-body p-2">
                 {# Approve / Decline above the title #}
-                {% if dr.approval_status == "PENDING" %}
+                {% if dr.can_approve or dr.can_decline %}
                 <div class="d-flex justify-content-start gap-1 mb-2 kanban-approval-buttons">
                   <button type="button" class="btn btn-success btn-sm btn-approve">✓</button>
                   <button type="button" class="btn btn-danger btn-sm btn-decline">✕</button>
