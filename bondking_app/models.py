@@ -334,7 +334,7 @@ DR_STEP_META = {
         # You didn’t include DELIVERED in decline map except the D2D special-case; we keep that behavior.
         "decliner_roles": set(),
         "required_fields": [],
-        "required_before_forward": ["proof_of_delivery"],  # branching handled in flow logic
+        "required_before_forward": [],  # branching handled in flow logic
         "status_map": {"delivery_status": DeliveryStatus.DELIVERED, "payment_status": PaymentStatus.NA},
         # Important: in your current code, forward into DELIVERED ends up APPROVED.
         "approval_on_enter_forward": False,          # don’t force pending when entering delivered

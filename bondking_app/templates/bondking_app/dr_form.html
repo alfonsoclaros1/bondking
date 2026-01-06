@@ -1063,6 +1063,66 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 });
 </script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const input = document.getElementById("client-search");
+  const hidden = document.getElementById("client-id");
+  const list = document.getElementById("client-suggestions");
+  const raw = document.getElementById("client-data");
+
+  if (!input || !hidden || !list || !raw) return;
+
+  const clients = JSON.parse(raw.textContent);
+
+  function clearSuggestions() {
+    list.innerHTML = "";
+    list.style.display = "none";
+  }
+
+  input.addEventListener("input", function () {
+    const q = this.value.trim().toLowerCase();
+    clearSuggestions();
+
+    if (!q) {
+      hidden.value = "";
+      return;
+    }
+
+    const matches = clients.filter(c =>
+      c.name.toLowerCase().includes(q)
+    ).slice(0, 10);
+
+    if (!matches.length) return;
+
+    matches.forEach(c => {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "list-group-item list-group-item-action";
+      item.textContent = c.name;
+
+      item.addEventListener("click", () => {
+        input.value = c.name;
+        hidden.value = c.id;
+        clearSuggestions();
+
+        // 🔁 Trigger client details load
+        document.dispatchEvent(new Event("client:selected"));
+      });
+
+      list.appendChild(item);
+    });
+
+    list.style.display = "block";
+  });
+
+  // Hide when clicking outside
+  document.addEventListener("click", function (e) {
+    if (!list.contains(e.target) && e.target !== input) {
+      clearSuggestions();
+    }
+  });
+});
+</script>
 
 
 <script>
@@ -1160,28 +1220,39 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function clearClientDisplay() {
-    const ids = ["client-name", "client-contact", "client-contact-person", "client-address"];
-    ids.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = "—";
-    });
+    ["client-name", "client-contact", "client-contact-person", "client-address"]
+      .forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = "—";
+      });
   }
 
-  // create mode / no client set
-  if (!hiddenClientId || !hiddenClientId.value) return;
-
-  fetch(getClientUrl(hiddenClientId.value))
-    .then(res => {
-      if (!res.ok) throw new Error("Client fetch failed: " + res.status);
-      return res.json();
-    })
-    .then(fillClientDisplay)
-    .catch(err => {
-      console.error("Client autofill failed:", err);
+  function loadClientDetails() {
+    if (!hiddenClientId || !hiddenClientId.value) {
       clearClientDisplay();
-    });
+      return;
+    }
+
+    fetch(getClientUrl(hiddenClientId.value))
+      .then(res => {
+        if (!res.ok) throw new Error("Client fetch failed: " + res.status);
+        return res.json();
+      })
+      .then(fillClientDisplay)
+      .catch(err => {
+        console.error("Client autofill failed:", err);
+        clearClientDisplay();
+      });
+  }
+
+  // ✅ Run on page load (edit / reopen DR)
+  loadClientDetails();
+
+  // ✅ ALSO run when a client is selected from autocomplete
+  document.addEventListener("client:selected", loadClientDetails);
 });
 </script>
+
 
 
 {% endblock %}
