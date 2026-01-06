@@ -208,7 +208,7 @@ def dr_edit(request, pk):
         if action == "archive":
             if not (request.user.is_superuser or request.user.groups.filter(name="TopManagement").exists()):
                 messages.error(request, "Only Top Management can archive DRs.")
-                return redirect("dr-kanban")
+                return redirect("dr-edit", pk=dr.pk)
 
             # Sample can archive at Delivered; others require Deposited
             can_archive = (
@@ -217,7 +217,7 @@ def dr_edit(request, pk):
             )
             if not can_archive:
                 messages.error(request, "This DR is not yet eligible for archiving.")
-                return redirect("dr-kanban")
+                return redirect("dr-edit", pk=dr.pk)
 
 
             dr.is_archived = True
@@ -273,7 +273,7 @@ def dr_edit(request, pk):
                         f"{label} was set to {new_val} by {request.user.get_full_name() or request.user.username}",
                     )
 
-            return redirect("dr-kanban")
+            return redirect("dr-edit", pk=dr.pk)
 
 
     # ==========================

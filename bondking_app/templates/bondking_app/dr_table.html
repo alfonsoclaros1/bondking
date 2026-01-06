@@ -570,7 +570,13 @@ document.addEventListener("click", function(e) {
 
     const body = document.getElementById("itemsModalBody");
     body.innerHTML = `<div class="text-muted">Loading…</div>`;
-
+    function formatCurrency(value) {
+      const num = Number(value || 0);
+      return num.toLocaleString("en-PH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+    }
     fetch(`/api/dr/${drId}/items/`)
       .then(r => r.json())
       .then(data => {
@@ -594,8 +600,8 @@ document.addEventListener("click", function(e) {
                     <td class="fw-semibold">${it.product}</td>
                     <td class="small">${it.description || "—"}</td>
                     <td>${it.quantity}</td>
-                    <td>₱${Number(it.unit_price).toFixed(2)}</td>
-                    <td>₱${Number(it.line_total).toFixed(2)}</td>
+                    <td>₱${formatCurrency(it.unit_price)}</td>
+                    <td>₱${formatCurrency(it.line_total)}</td>
                   </tr>
                 `).join("")}
               </tbody>
