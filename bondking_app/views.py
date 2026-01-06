@@ -150,6 +150,7 @@ def dr_create(request):
         "stage": "NEW_DR",
         "is_create": True,
         "updates": [],   # ✔ safe for create mode
+        "clients": Client.objects.all().order_by("company_name"),
     }
     return render(request, "bondking_app/dr_form.html", context)
 
@@ -372,6 +373,7 @@ def dr_edit(request, pk):
         "prev_dr": prev_dr,
         "next_dr": next_dr,
         "is_top_management": is_top_management(request.user),
+        "clients": Client.objects.all().order_by("company_name"),
     }
 
     return render(request, "bondking_app/dr_form.html", context)
@@ -764,6 +766,13 @@ def dr_table(request):
     # -------------------
     # Show All logic
     # -------------------
+    def clean_param(val):
+        """
+        Returns None if the param is empty, 'None', 'null', etc.
+        """
+        if val in (None, "", "None", "null", "undefined"):
+            return None
+        return val
 
 
 
@@ -813,9 +822,6 @@ def dr_table(request):
     if delivery_method:
         qs = qs.filter(delivery_method=delivery_method)
 
-    if client_id.isdigit():
-        qs = qs.filter(client_id=int(client_id))
-
     if agent_id.isdigit():
         qs = qs.filter(agent_id=int(agent_id))
 
@@ -836,8 +842,10 @@ def dr_table(request):
     client_id = request.GET.get("client")
     client_name = request.GET.get("client_name")
 
-    if client_id:
-        qs = qs.filter(client_id=client_id)
+    client = clean_param(request.GET.get("client"))
+
+    if client and client.isdigit():
+        qs = qs.filter(client_id=int(client))
     elif client_name:
         qs = qs.filter(client__company_name__icontains=client_name)
 
@@ -1256,15 +1264,13 @@ def dr_table_export(request):
     qs = DeliveryReceipt.objects.select_related(
         "client", "agent", "created_by", "source_dr"
     )
+    
     def excel_safe_datetime(value):
         if isinstance(value, datetime):
             return value.replace(tzinfo=None)
         return value
 
     # APPLY SAME FILTERS AS dr_table (COPY EXACTLY)
-    if request.GET.get("client", "").isdigit():
-        qs = qs.filter(client_id=int(request.GET["client"]))
-
     if request.GET.get("agent", "").isdigit():
         qs = qs.filter(agent_id=int(request.GET["agent"]))
 
@@ -1283,8 +1289,9 @@ def dr_table_export(request):
     if request.GET.get("end_date"):
         qs = qs.filter(date_of_order__lte=request.GET["end_date"])
 
-    hide_archived = request.GET.get("hide_archived", "1") == "1"
-    hide_cancelled = request.GET.get("hide_cancelled", "1") == "1"
+    hide_archived = request.GET.get("hide_archived") == "1"
+    hide_cancelled = request.GET.get("hide_cancelled") == "1"
+
     with_sales_invoice = request.GET.get("with_sales_invoice") == "1"
     if with_sales_invoice:
         qs = qs.exclude(
@@ -1302,6 +1309,37 @@ def dr_table_export(request):
     if not hide_cancelled:
         qs = qs.filter(is_cancelled=False)
 
+    client = request.GET.get("client")
+    client_name = request.GET.get("client_name")
+
+    if client and client.isdigit():
+        qs = qs.filter(client_id=int(client))
+    elif client_name:
+        qs = qs.filter(client__company_name__icontains=client_name)
+
+    if request.GET.get("dr_number"):
+        qs = qs.filter(dr_number__icontains=request.GET["dr_number"])
+
+    if request.GET.get("due_start"):
+        qs = qs.filter(payment_due__gte=request.GET["due_start"])
+
+    if request.GET.get("due_end"):
+        qs = qs.filter(payment_due__lte=request.GET["due_end"])
+
+    if request.GET.get("delivery_method"):
+        qs = qs.filter(delivery_method=request.GET["delivery_method"])
+
+    SORT_OPTIONS = {
+        "date_desc": "-date_of_order",
+        "date_asc": "date_of_order",
+        "total_desc": "-total_amount",
+        "total_asc": "total_amount",
+        "dr_desc": "-dr_number",
+        "dr_asc": "dr_number",
+    }
+
+    sort_by = request.GET.get("sort_by", "dr_asc")
+    qs = qs.order_by(SORT_OPTIONS.get(sort_by, "-date_of_order"))
 
     # ---- EXCEL ----
     wb = openpyxl.Workbook()

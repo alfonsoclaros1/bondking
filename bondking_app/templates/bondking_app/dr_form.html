@@ -255,8 +255,46 @@ input[name$="-id"] {
             <!-- Client selection + quick add -->
             <div class="mb-3">
               <label class="form-label">{{ form.client.label }} <span class="text-danger">*</span></label>
-              <div class="d-flex gap-2">
-                {{ form.client|add_class:"form-select client-select" }}
+              <div class="d-flex gap-2 align-items-start">
+                <div class="position-relative flex-grow-1">
+                  <!-- Visible search input -->
+                  <input
+                    type="text"
+                    id="client-search"
+                    class="form-control"
+                    placeholder="Search client…"
+                    autocomplete="off"
+                    value="{% if form.instance.client %}{{ form.instance.client.company_name }}{% endif %}"
+                  >
+
+                  <!-- Actual Django-bound client ID -->
+                  <input
+                    type="hidden"
+                    name="client"
+                    id="client-id"
+                    value="{% if form.instance.client %}{{ form.instance.client.id }}{% endif %}"
+                  >
+
+                  <!-- Suggestions -->
+                  <div
+                    id="client-suggestions"
+                    class="list-group position-absolute w-100 shadow-sm"
+                    style="z-index:1050; display:none; max-height:240px; overflow-y:auto;"
+                  ></div>
+
+                  <!-- Preload client data -->
+                  <script type="application/json" id="client-data">
+                    [
+                      {% for c in clients %}
+                        {
+                          "id": {{ c.id }},
+                          "name": "{{ c.company_name|escapejs }}"
+                        }{% if not forloop.last %},{% endif %}
+                      {% endfor %}
+                    ]
+                  </script>
+                </div>
+
                 <a href="{% url 'client-create' %}" target="_blank" class="btn btn-outline-secondary btn-sm">
                   + New Client
                 </a>
@@ -1135,6 +1173,84 @@ document.getElementById("declineModal")
     // Clear old values
     form.querySelector('[name="reject_problem"]').value = "";
     form.querySelector('[name="reject_solution"]').value = "";
+});
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const input = document.getElementById("client-search");
+  const hidden = document.getElementById("client-id");
+  const box = document.getElementById("client-suggestions");
+  const dataEl = document.getElementById("client-data");
+
+  if (!input || !hidden || !box || !dataEl) return;
+
+  const clients = JSON.parse(dataEl.textContent);
+
+  function render(matches) {
+    if (!matches.length) {
+      box.style.display = "none";
+      return;
+    }
+
+    box.innerHTML = matches.map(c => `
+      <button
+        type="button"
+        class="list-group-item list-group-item-action py-1"
+        data-id="${c.id}"
+        data-name="${c.name}"
+      >
+        ${c.name}
+      </button>
+    `).join("");
+
+    box.style.display = "block";
+  }
+
+  input.addEventListener("input", function () {
+    const q = this.value.trim().toLowerCase();
+    hidden.value = ""; // reset until selection
+
+    if (!q) {
+      box.style.display = "none";
+      return;
+    }
+
+    const matches = clients
+      .filter(c => c.name.toLowerCase().includes(q))
+      .slice(0, 10);
+
+    render(matches);
+  });
+
+  box.addEventListener("click", function (e) {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    input.value = btn.dataset.name;
+    hidden.value = btn.dataset.id;
+    box.style.display = "none";
+
+    // 🔁 Trigger client detail fetch
+    fetch(`/api/clients/${btn.dataset.id}/`)
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById("client-name").textContent =
+          data.name_of_owner || data.company_name || "—";
+        document.getElementById("client-contact").textContent =
+          data.contact_number || "—";
+        document.getElementById("client-address").textContent =
+          data.full_address || "—";
+        document.getElementById("client-contact-person").textContent =
+          data.name_of_owner || "—";
+      });
+  });
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest("#client-search") &&
+        !e.target.closest("#client-suggestions")) {
+      box.style.display = "none";
+    }
+  });
 });
 </script>
 
