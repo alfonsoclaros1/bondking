@@ -859,6 +859,17 @@ def dr_table(request):
     }
     qs = qs.order_by(SORT_OPTIONS.get(sort_by, "-date_of_order"))
 
+    # ---- Client display value (for template only) ----
+    client_display = ""
+
+    if client and client.isdigit():
+        try:
+            client_display = Client.objects.get(pk=int(client)).company_name
+        except Client.DoesNotExist:
+            client_display = ""
+    elif client_name:
+        client_display = client_name
+
     # -------------------
     # Pagination (LAST)
     # -------------------
@@ -877,6 +888,9 @@ def dr_table(request):
         "sort_by": sort_by,
         "is_top_management": is_top_management(request.user),
         "delivery_methods": DeliveryMethod.choices,
+        "client": client,
+        "client_name": client_name,
+        "client_display": client_display,
         "selected": {
             "client": client_id,
             "client_name": client_name,   # ✅ ADD THIS

@@ -30,7 +30,7 @@
             id="client-search"
             placeholder="Search client…"
             autocomplete="off"
-            value="{% if selected.client_name %} {{ selected.client_name }} {% else %} {% for c in clients %} {% if selected.client|stringformat:'s' == c.id|stringformat:'s' %} {{ c.company_name }} {% endif %} {% endfor %} {% endif %}">
+            value="{{ selected.client_display }}">
 
           <input
             type="hidden"
@@ -104,73 +104,76 @@
         <!-- =========================
             ADDITIONAL FILTERS (ROW 2)
         ========================= -->
-        <div class="row g-2 mt-2 align-items-end">
+        <div class="col-12">
+          <div class="row g-2 mt-2 align-items-end">
 
-          <!-- DR NUMBER -->
-          <div class="col-12 col-md-3 position-relative">
-            <label class="form-label small text-muted">DR Number</label>
-            <input
-              type="text"
-              class="form-control form-control-sm"
-              id="dr-search"
-              placeholder="Search DR #…"
-              autocomplete="off"
-              value="{{ selected.dr_number }}"
-            >
-            <input type="hidden" name="dr_number" id="dr-number-hidden">
 
-            <div
-              id="dr-suggestions"
-              class="list-group position-absolute w-100 shadow-sm"
-              style="z-index:1050; display:none; max-height:240px; overflow-y:auto;"
-            ></div>
+            <!-- DR NUMBER -->
+            <div class="col-12 col-md-3 position-relative">
+              <label class="form-label small text-muted">DR Number</label>
+              <input
+                type="text"
+                class="form-control form-control-sm"
+                id="dr-search"
+                placeholder="Search DR #…"
+                autocomplete="off"
+                value="{{ selected.dr_number }}"
+              >
+              <input type="hidden" name="dr_number" id="dr-number-hidden">
 
-            <script type="application/json" id="dr-data">
-              [
-                {% for d in page_obj.paginator.object_list %}
-                  "{{ d.dr_number }}"{% if not forloop.last %},{% endif %}
+              <div
+                id="dr-suggestions"
+                class="list-group position-absolute w-100 shadow-sm"
+                style="z-index:1050; display:none; max-height:240px; overflow-y:auto;"
+              ></div>
+
+              <script type="application/json" id="dr-data">
+                [
+                  {% for d in page_obj.paginator.object_list %}
+                    "{{ d.dr_number }}"{% if not forloop.last %},{% endif %}
+                  {% endfor %}
+                ]
+              </script>
+            </div>
+
+            <!-- DUE DATE START -->
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted">Due Date (From)</label>
+              <input
+                type="date"
+                name="due_start"
+                class="form-control form-control-sm"
+                value="{{ selected.due_start }}"
+              >
+            </div>
+
+            <!-- DUE DATE END -->
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted">Due Date (To)</label>
+              <input
+                type="date"
+                name="due_end"
+                class="form-control form-control-sm"
+                value="{{ selected.due_end }}"
+              >
+            </div>
+
+            <!-- DELIVERY METHOD -->
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted">Delivery Method</label>
+              <select name="delivery_method" class="form-select form-select-sm">
+                <option value="">All</option>
+                {% for val,label in delivery_methods %}
+                  <option value="{{ val }}"
+                    {% if selected.delivery_method == val %}selected{% endif %}
+                  >
+                    {{ label }}
+                  </option>
                 {% endfor %}
-              ]
-            </script>
-          </div>
+              </select>
+            </div>
 
-          <!-- DUE DATE START -->
-          <div class="col-12 col-md-3">
-            <label class="form-label small text-muted">Due Date (From)</label>
-            <input
-              type="date"
-              name="due_start"
-              class="form-control form-control-sm"
-              value="{{ selected.due_start }}"
-            >
           </div>
-
-          <!-- DUE DATE END -->
-          <div class="col-12 col-md-3">
-            <label class="form-label small text-muted">Due Date (To)</label>
-            <input
-              type="date"
-              name="due_end"
-              class="form-control form-control-sm"
-              value="{{ selected.due_end }}"
-            >
-          </div>
-
-          <!-- DELIVERY METHOD -->
-          <div class="col-12 col-md-3">
-            <label class="form-label small text-muted">Delivery Method</label>
-            <select name="delivery_method" class="form-select form-select-sm">
-              <option value="">All</option>
-              {% for val,label in delivery_methods %}
-                <option value="{{ val }}"
-                  {% if selected.delivery_method == val %}selected{% endif %}
-                >
-                  {{ label }}
-                </option>
-              {% endfor %}
-            </select>
-          </div>
-
         </div>
 
         <div class="col-12 col-md-3">
@@ -826,10 +829,28 @@ document.addEventListener("DOMContentLoaded", function () {
     )
     .forEach(cb => {
       cb.addEventListener("change", function () {
-        this.closest("form").submit();
+        const form = this.closest("form");
+
+        // 🔒 Sync DR number if typed
+        const drInput = document.getElementById("dr-search");
+        const drHidden = document.getElementById("dr-number-hidden");
+        if (drInput && drHidden && !drHidden.value && drInput.value.trim()) {
+          drHidden.value = drInput.value.trim();
+        }
+
+        // 🔒 Sync client_name if client not selected
+        const clientId = document.getElementById("client-id");
+        const clientName = document.getElementById("client-name");
+        const clientSearch = document.getElementById("client-search");
+        if (clientId && clientName && clientSearch && !clientId.value) {
+          clientName.value = clientSearch.value.trim();
+        }
+
+        form.submit();
       });
     });
 });
+
 </script>
 
 
@@ -902,6 +923,33 @@ document.addEventListener("DOMContentLoaded", function () {
     // sync visible value into hidden field
     if (!drHidden.value && drInput.value.trim()) {
       drHidden.value = drInput.value.trim();
+    }
+  });
+});
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const form = document.querySelector("form");
+  if (!form) return;
+
+  form.addEventListener("submit", function () {
+    const clientId = document.getElementById("client-id");
+    const clientName = document.getElementById("client-name");
+    const clientSearch = document.getElementById("client-search");
+
+    if (!clientId || !clientName || !clientSearch) return;
+
+    // ✅ If a client ID is selected, CLEAR client_name
+    if (clientId.value) {
+      clientName.value = "";
+      return;
+    }
+
+    // ✅ If no ID, but text exists, use it as client_name
+    if (clientSearch.value.trim()) {
+      clientName.value = clientSearch.value.trim();
+    } else {
+      clientName.value = "";
     }
   });
 });
