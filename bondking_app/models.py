@@ -196,6 +196,7 @@ class Client(models.Model):
     )
     street_number = models.CharField(
         max_length=150,
+        blank=True,
         help_text="House or building number"
     )
     street_name = models.CharField(
@@ -203,6 +204,7 @@ class Client(models.Model):
     )
     barangay = models.CharField(
         max_length=255,
+        blank=True,
     )
     city_municipality = models.CharField(
         max_length=255
@@ -212,7 +214,6 @@ class Client(models.Model):
     )
     postal_code = models.CharField(
         max_length=20,
-        blank=True
     )
 
     contact_number = models.CharField(max_length=50, blank=True)
