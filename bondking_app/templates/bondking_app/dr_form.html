@@ -1253,6 +1253,42 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 </script>
 
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const declineForm = document.getElementById("declineForm");
+  if (!declineForm) return;
+
+  declineForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    const actionUrl = declineForm.action;
+    if (!actionUrl) return;
+
+    const formData = new FormData(declineForm);
+
+    fetch(actionUrl, {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value
+      },
+      body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (!data.ok) {
+        throw new Error(data.error || "Reject failed.");
+      }
+
+      // ✅ EXACT behavior match with Kanban:
+      // After reject → go back to Kanban
+      window.location.reload();
+    })
+    .catch(err => {
+      alert(err.message);
+    });
+  });
+});
+</script>
 
 
 {% endblock %}
