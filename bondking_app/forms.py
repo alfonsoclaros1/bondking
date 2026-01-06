@@ -315,9 +315,16 @@ class DeliveryReceiptForm(forms.ModelForm):
         # 7. remarks ALWAYS editable
         # ------------------------------------------------------------
         self.fields["remarks"].disabled = False
-        if self.user and (self.user.is_superuser or is_top_management(self.user)):
+
+        # ✅ FINAL OVERRIDE: Top Management + AGR can ALWAYS edit status fields
+        if self.user and (
+            self.user.is_superuser
+            or is_top_management(self.user)
+            or self.user.groups.filter(name="AGR").exists()
+        ):
             self.fields["delivery_status"].disabled = False
             self.fields["payment_status"].disabled = False
+
                 
     def clean_date_of_delivery(self):
         date = self.cleaned_data.get("date_of_delivery")
