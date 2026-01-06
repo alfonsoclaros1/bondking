@@ -124,10 +124,14 @@ class DeliveryReceiptForm(forms.ModelForm):
         self.fields["delivery_status"].disabled = True
         self.fields["payment_status"].disabled = True
 
-        # Only Top Management can edit
-        if self.user and is_top_management(self.user):
+        # Top Management and AGR can edit
+        if self.user and (
+            is_top_management(self.user)
+            or self.user.groups.filter(name="AGR").exists()
+        ):
             self.fields["delivery_status"].disabled = False
             self.fields["payment_status"].disabled = False
+
 
         # Assign preview DR number if creating
         if not self.instance.pk:

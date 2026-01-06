@@ -1,4 +1,5 @@
 from datetime import date, timedelta, datetime
+import os
 import traceback
 from urllib import request
 from django.contrib.auth.decorators import login_required
@@ -2128,6 +2129,8 @@ def product_id_quick_create(request):
 
 
 
+
+
 @login_required
 def dr_print(request, pk):
     dr = get_object_or_404(DeliveryReceipt, pk=pk)
@@ -2142,26 +2145,41 @@ def dr_print(request, pk):
         "STATIC_ROOT_URL": request.build_absolute_uri(settings.STATIC_URL),
     })
 
-    config = pdfkit.configuration(
-        wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
-    )
+    # ✅ Explicit environment detection
+    IS_RENDER = os.environ.get("RENDER") == "true"
 
-    pdf = pdfkit.from_string(
-        html,
-        False,
-        configuration=config,
-        options={
-            "page-size": "Letter",
-            "orientation": "Portrait",
-            "margin-top": "15mm",
-            "margin-bottom": "15mm",
-            "margin-left": "15mm",
-            "margin-right": "15mm",
-            "encoding": "UTF-8",
-            "--enable-local-file-access": ""
-        },
+    if IS_RENDER:
+        # ===== PRODUCTION (Render / Linux) =====
+        from weasyprint import HTML
 
-    )
+        pdf = HTML(
+            string=html,
+            base_url=request.build_absolute_uri("/")
+        ).write_pdf()
+
+    else:
+        # ===== LOCAL (Windows) =====
+        import pdfkit
+
+        config = pdfkit.configuration(
+            wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
+        )
+
+        pdf = pdfkit.from_string(
+            html,
+            False,
+            configuration=config,
+            options={
+                "page-size": "Letter",
+                "orientation": "Portrait",
+                "margin-top": "15mm",
+                "margin-bottom": "15mm",
+                "margin-left": "15mm",
+                "margin-right": "15mm",
+                "encoding": "UTF-8",
+                "--enable-local-file-access": ""
+            }
+        )
 
     response = HttpResponse(pdf, content_type="application/pdf")
     response["Content-Disposition"] = f'inline; filename="DR-{dr.dr_number}.pdf"'

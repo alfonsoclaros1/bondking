@@ -1064,44 +1064,6 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 </script>
 
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const clientSelect = document.querySelector(".client-select");
-  const clientDetailUrlTemplate = "{% url 'client-detail-api' 9999 %}";
-
-  function getClientUrl(id) {
-    return clientDetailUrlTemplate.replace("9999", id);
-  }
-
-  function clearClientDisplay() {
-    document.getElementById("client-name").textContent = "—";
-    document.getElementById("client-contact").textContent = "—";
-    document.getElementById("client-contact-person").textContent = "—";
-    document.getElementById("client-address").textContent = "—";
-  }
-
-  if (!clientSelect) return;
-
-  clientSelect.addEventListener("change", function () {
-    const id = this.value;
-    if (!id) return clearClientDisplay();
-
-    fetch(getClientUrl(id))
-      .then(r => r.json())
-      .then(data => {
-        const name = data.name_of_owner || data.company_name || "—";
-        document.getElementById("client-name").textContent = name;
-        document.getElementById("client-contact").textContent = data.contact_number || "—";
-        document.getElementById("client-address").textContent =
-          (data.full_address  || "—");
-        document.getElementById("client-contact-person").textContent = name;
-      })
-      .catch(() => clearClientDisplay());
-  });
-
-  if (clientSelect.value) clientSelect.dispatchEvent(new Event("change"));
-});
-</script>
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
@@ -1175,83 +1137,51 @@ document.getElementById("declineModal")
     form.querySelector('[name="reject_solution"]').value = "";
 });
 </script>
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-  const input = document.getElementById("client-search");
-  const hidden = document.getElementById("client-id");
-  const box = document.getElementById("client-suggestions");
-  const dataEl = document.getElementById("client-data");
+  const hiddenClientId = document.getElementById("client-id");
+  const clientDetailUrlTemplate = "{% url 'client-detail-api' 9999 %}";
 
-  if (!input || !hidden || !box || !dataEl) return;
-
-  const clients = JSON.parse(dataEl.textContent);
-
-  function render(matches) {
-    if (!matches.length) {
-      box.style.display = "none";
-      return;
-    }
-
-    box.innerHTML = matches.map(c => `
-      <button
-        type="button"
-        class="list-group-item list-group-item-action py-1"
-        data-id="${c.id}"
-        data-name="${c.name}"
-      >
-        ${c.name}
-      </button>
-    `).join("");
-
-    box.style.display = "block";
+  function getClientUrl(id) {
+    return clientDetailUrlTemplate.replace("9999", id);
   }
 
-  input.addEventListener("input", function () {
-    const q = this.value.trim().toLowerCase();
-    hidden.value = ""; // reset until selection
+  function fillClientDisplay(data) {
+    const nameEl = document.getElementById("client-name");
+    const contactEl = document.getElementById("client-contact");
+    const personEl = document.getElementById("client-contact-person");
+    const addressEl = document.getElementById("client-address");
 
-    if (!q) {
-      box.style.display = "none";
-      return;
-    }
+    if (nameEl) nameEl.textContent = data.company_name || "—";
+    if (contactEl) contactEl.textContent = data.contact_number || "—";
+    if (personEl) personEl.textContent = data.name_of_owner || "—";
+    if (addressEl) addressEl.textContent = data.full_address || "—";
+  }
 
-    const matches = clients
-      .filter(c => c.name.toLowerCase().includes(q))
-      .slice(0, 10);
+  function clearClientDisplay() {
+    const ids = ["client-name", "client-contact", "client-contact-person", "client-address"];
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = "—";
+    });
+  }
 
-    render(matches);
-  });
+  // create mode / no client set
+  if (!hiddenClientId || !hiddenClientId.value) return;
 
-  box.addEventListener("click", function (e) {
-    const btn = e.target.closest("button");
-    if (!btn) return;
-
-    input.value = btn.dataset.name;
-    hidden.value = btn.dataset.id;
-    box.style.display = "none";
-
-    // 🔁 Trigger client detail fetch
-    fetch(`/api/clients/${btn.dataset.id}/`)
-      .then(r => r.json())
-      .then(data => {
-        document.getElementById("client-name").textContent =
-          data.name_of_owner || data.company_name || "—";
-        document.getElementById("client-contact").textContent =
-          data.contact_number || "—";
-        document.getElementById("client-address").textContent =
-          data.full_address || "—";
-        document.getElementById("client-contact-person").textContent =
-          data.name_of_owner || "—";
-      });
-  });
-
-  document.addEventListener("click", function (e) {
-    if (!e.target.closest("#client-search") &&
-        !e.target.closest("#client-suggestions")) {
-      box.style.display = "none";
-    }
-  });
+  fetch(getClientUrl(hiddenClientId.value))
+    .then(res => {
+      if (!res.ok) throw new Error("Client fetch failed: " + res.status);
+      return res.json();
+    })
+    .then(fillClientDisplay)
+    .catch(err => {
+      console.error("Client autofill failed:", err);
+      clearClientDisplay();
+    });
 });
 </script>
+
 
 {% endblock %}
