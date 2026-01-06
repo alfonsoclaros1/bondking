@@ -390,7 +390,7 @@ DR_STEP_META = {
         "approver_roles": {"LogisticsHead", "TopManagement"},
         "decliner_roles": {"LogisticsHead", "TopManagement"},
         "required_fields": [],
-        "required_before_forward": [],
+        "required_before_forward": ["payment_details"],
         "status_map": {"delivery_status": None, "payment_status": PaymentStatus.FOR_COLLECTION},
         "approval_on_enter_forward": True,
         "auto_approve_on_enter_forward": False,

@@ -110,6 +110,10 @@ document.addEventListener("DOMContentLoaded", function () {
   if (!form || !discardBtn) return;
 
   let isDirty = false;
+  form.addEventListener("submit", () => {
+    isDirty = false;
+    window.removeEventListener("beforeunload", beforeUnloadHandler);
+  });
 
   // Mark dirty on any user input
   form.querySelectorAll("input, select, textarea").forEach(el => {

@@ -394,6 +394,8 @@ document.addEventListener("DOMContentLoaded", function () {
         window.history.back();
       }
     });
+    window.removeEventListener("beforeunload", beforeUnloadHandler);
+
   }
 
   // Browser unload protection

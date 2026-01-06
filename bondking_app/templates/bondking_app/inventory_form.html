@@ -230,66 +230,47 @@ document.addEventListener("DOMContentLoaded", function () {
 document.addEventListener("DOMContentLoaded", function () {
   const form = document.querySelector("form");
   const discardBtn = document.getElementById("discard-btn");
-
   if (!form) return;
 
   let isDirty = false;
-  let isSubmitting = false;
 
-  // Capture initial state
   const initialData = new FormData(form);
 
   function hasFormChanged() {
     const currentData = new FormData(form);
     for (let [key, value] of currentData.entries()) {
-      if (initialData.get(key) !== value) {
-        return true;
-      }
+      if (initialData.get(key) !== value) return true;
     }
     return false;
   }
 
-  // Track real user changes only
-  form.addEventListener("input", () => {
-    isDirty = hasFormChanged();
-  });
+  function beforeUnloadHandler(e) {
+    if (!isDirty) return;
+    e.preventDefault();
+    e.returnValue = "";
+  }
 
-  form.addEventListener("change", () => {
-    isDirty = hasFormChanged();
-  });
+  form.addEventListener("input", () => isDirty = hasFormChanged());
+  form.addEventListener("change", () => isDirty = hasFormChanged());
 
-  // SAVE → disable warning
   form.addEventListener("submit", () => {
-    isSubmitting = true;
     isDirty = false;
+    window.removeEventListener("beforeunload", beforeUnloadHandler);
   });
 
-  // Discard button
   if (discardBtn) {
-    discardBtn.addEventListener("click", function () {
-      if (!hasFormChanged()) {
-        window.history.back();
-        return;
-      }
-
-      const ok = confirm(
-        "You have unsaved changes.\n\nIf you leave now, your changes will be lost.\n\nContinue?"
-      );
-
-      if (ok) {
+    discardBtn.addEventListener("click", () => {
+      if (!hasFormChanged()) return window.history.back();
+      if (confirm("You have unsaved changes.\n\nIf you leave now, your changes will be lost.\n\nContinue?")) {
         window.history.back();
       }
     });
   }
 
-  // Browser unload protection
-  window.addEventListener("beforeunload", function (e) {
-    if (!isDirty || isSubmitting) return;
-    e.preventDefault();
-    e.returnValue = "";
-  });
+  window.addEventListener("beforeunload", beforeUnloadHandler);
 });
 </script>
+
 
 
 <script>

@@ -69,6 +69,8 @@
               data-payment-method="{{ dr.payment_method }}"
               data-approval-status="{{ dr.approval_status }}"
               data-move-url="{% url 'dr-move' dr.id %}"
+              data-can-approve="{% if dr.can_approve %}true{% else %}false{% endif %}"
+              data-can-decline="{% if dr.can_decline %}true{% else %}false{% endif %}"
               data-approve-url="{% url 'dr-approve' dr.id %}"
               data-decline-url="{% url 'dr-decline' dr.id %}"
               data-archive-url="{% url 'dr-archive' dr.id %}"
@@ -77,8 +79,19 @@
                 {# Approve / Decline above the title #}
                 {% if dr.can_approve or dr.can_decline %}
                 <div class="d-flex justify-content-start gap-1 mb-2 kanban-approval-buttons">
+                  {% if dr.can_approve %}
                   <button type="button" class="btn btn-success btn-sm btn-approve">✓</button>
-                  <button type="button" class="btn btn-danger btn-sm btn-decline">✕</button>
+                  {% endif %}
+                  {% if dr.can_decline %}
+                  <button type="button" 
+                  class="btn btn-danger btn-sm btn-decline"
+                  data-dr-id="{{ dr.id }}"
+                  data-action-url="{% url 'dr-decline' dr.id %}"
+                  data-bs-toggle="modal"
+                  data-bs-target="#declineModal">
+                  ✕
+                  </button>
+                  {% endif %}
                 </div>
                 {% elif is_top_management and col.key == "DEPOSITED" or is_top_management and col.key == "DELIVERED" and dr.delivery_method == "SAMPLE" %}
                   <div class="d-flex justify-content-start mb-2">
@@ -194,6 +207,92 @@
     </div>
   </div>
 </div>
+
+
+<!-- D2D STOCKS TRANSACTIONS MODAL -->
+<div class="modal fade" id="d2dTransactionsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">D2D Stock Transactions</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <div id="d2d-transactions-content">
+          <div class="text-center text-muted">
+            Loading…
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer justify-content-between">
+        <div id="d2d-archive-container"></div>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          Close
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+<!-- DECLINE DR MODAL -->
+<div class="modal fade" id="declineModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow">
+
+      <form id="declineForm" method="post">
+        {% csrf_token %}
+
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title">Reject Delivery Receipt</h5>
+          <button type="button" class="btn-close btn-close-white"
+                  data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              Reason for Rejection
+            </label>
+            <textarea
+              name="reject_problem"
+              class="form-control"
+              rows="3"
+              placeholder="What is wrong with this DR?"
+              required></textarea>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">
+              Suggested Fix (optional)
+            </label>
+            <textarea
+              name="reject_solution"
+              class="form-control"
+              rows="3"
+              placeholder="What needs to be corrected?"></textarea>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button"
+                  class="btn btn-outline-secondary"
+                  data-bs-dismiss="modal">
+            Cancel
+          </button>
+          <button class="btn btn-danger">
+            Reject DR
+          </button>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_css %}
@@ -291,9 +390,109 @@
   }
 
 </style>
+
 {% endblock %}
 
 {% block extra_js %}
+<script>
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+</script>
+
+<script>
+document.getElementById("declineModal")
+  ?.addEventListener("show.bs.modal", function (event) {
+
+    const button = event.relatedTarget;
+    const actionUrl = button.getAttribute("data-action-url");
+    const drId = button.getAttribute("data-dr-id");
+    
+    const form = document.getElementById("declineForm");
+    form.action = actionUrl;
+    form.dataset.drId = drId;
+
+    // Clear old values
+    form.querySelector('[name="reject_problem"]').value = "";
+    form.querySelector('[name="reject_solution"]').value = "";
+});
+</script>
+<script>
+(function () {
+  const form = document.getElementById("declineForm");
+  if (!form) return;
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    const actionUrl = form.action;
+    if (!actionUrl) return;
+
+    const formData = new FormData(form);
+
+    if (typeof currentSimRole !== "undefined" && currentSimRole) {
+      formData.append("sim_role", currentSimRole);
+    }
+
+    fetch(actionUrl, {
+      method: "POST",
+      headers: {
+        "X-CSRFToken": getCookie("csrftoken")
+      },
+      body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (!data.ok) {
+        throw new Error(data.error || "Reject failed.");
+      }
+
+      const drId = form.dataset.drId;
+      const card = document.querySelector(
+        `.kanban-card[data-dr-id="${drId}"]`
+      );
+
+      if (!card) return;
+
+      const targetBody = document.querySelector(
+        `.kanban-column-body[data-column="${data.column}"]`
+      );
+
+      if (targetBody) {
+        targetBody.appendChild(card);
+        card.dataset.currentColumn = data.column;
+      }
+      // Update permission flags if backend sends them
+      if (typeof data.can_approve !== "undefined") {
+        card.dataset.canApprove = data.can_approve ? "true" : "false";
+      }
+      if (typeof data.can_decline !== "undefined") {
+        card.dataset.canDecline = data.can_decline ? "true" : "false";
+      }
+      refreshCardAppearance(card, data.approval_status);
+
+      bootstrap.Modal.getInstance(
+        document.getElementById("declineModal")
+      ).hide();
+
+      recomputeCountsAndEmpty();
+    })
+    .catch(err => alert(err.message));
+  });
+})();
+</script>
+
 <script>
   const CSRF_TOKEN = "{{ csrf_token }}";
 
@@ -467,7 +666,6 @@
     function initApproveDecline() {
       document.addEventListener('click', function (e) {
         const approveBtn = e.target.closest('.btn-approve');
-        const declineBtn = e.target.closest('.btn-decline');
 
         if (approveBtn) {
           e.preventDefault();
@@ -475,19 +673,10 @@
           const card = approveBtn.closest('.kanban-card');
           if (!card) return;
           handleApprove(card);
-          return;
-        }
-
-        if (declineBtn) {
-          e.preventDefault();
-          e.stopPropagation();
-          const card = declineBtn.closest('.kanban-card');
-          if (!card) return;
-          handleDecline(card);
-          return;
         }
       });
     }
+
 
     function handleApprove(card) {
       const url = card.dataset.approveUrl;
@@ -518,65 +707,18 @@
         if (!data.ok) {
           throw new Error(data.error || 'Error approving DR.');
         }
+        // Update permission flags if backend sends them
+        if (typeof data.can_approve !== "undefined") {
+          card.dataset.canApprove = data.can_approve ? "true" : "false";
+        }
+        if (typeof data.can_decline !== "undefined") {
+          card.dataset.canDecline = data.can_decline ? "true" : "false";
+        }
         refreshCardAppearance(card, data.approval_status);
 
         // Remove approve/decline buttons
         const btnRow = card.querySelector('.btn-approve')?.parentElement;
         if (btnRow) btnRow.remove();
-
-        recomputeCountsAndEmpty();
-      })
-      .catch(err => {
-        alert(err.message);
-      });
-    }
-
-    function handleDecline(card) {
-      const url = card.dataset.declineUrl;
-      if (!url) return;
-
-      const currentColumn = card.dataset.currentColumn || '';
-      const formData = new FormData();
-      formData.append('notes', `Declined in ${currentColumn} as ${currentSimRole || 'actual role'}.`);
-
-      if (IS_ADMIN_LIKE && currentSimRole) {
-        formData.append('sim_role', currentSimRole);
-      }
-
-      fetch(url, {
-        method: 'POST',
-        headers: { 'X-CSRFToken': csrftoken },
-        body: formData
-      })
-      .then(response => {
-        if (!response.ok) {
-          return response.json().then(data => {
-            throw new Error(data.error || 'Error declining DR.');
-          });
-        }
-        return response.json();
-      })
-      .then(data => {
-        if (!data.ok) {
-          throw new Error(data.error || 'Error declining DR.');
-        }
-
-        const newColumn = data.column; // backend returns new current column
-        refreshCardAppearance(card, data.approval_status);
-
-        // Remove approve/decline buttons
-        const btnRow = card.querySelector('.btn-approve')?.parentElement;
-        if (btnRow) btnRow.remove();
-
-        if (newColumn) {
-          const targetBody = document.querySelector(
-            '.kanban-column-body[data-column="' + newColumn + '"]'
-          );
-          if (targetBody) {
-            targetBody.appendChild(card);
-            card.dataset.currentColumn = newColumn;
-          }
-        }
 
         recomputeCountsAndEmpty();
       })
@@ -634,43 +776,57 @@
         });
       });
     }
-    function refreshCardAppearance(card, approvalStatus) {
-      // Always keep the dataset in sync
+    window.refreshCardAppearance = function (card, approvalStatus) {
+
       card.dataset.approvalStatus = approvalStatus;
 
-      // Reset visual state
       card.classList.remove('kanban-card-pending', 'kanban-card-declined');
 
-      // Find existing approval buttons (rendered by Django ONLY)
-      const btnRow = card.querySelector('.kanban-approval-buttons');
+      let btnRow = card.querySelector('.kanban-approval-buttons');
 
-      if (approvalStatus === 'PENDING') {
-        // Pending = waiting for approval → cannot be dragged
+      const canApprove = card.dataset.canApprove === "true";
+      const canDecline = card.dataset.canDecline === "true";
+
+      if (approvalStatus === 'PENDING' && (canApprove || canDecline)) {
         card.classList.add('kanban-card-pending');
         card.setAttribute('draggable', 'false');
 
-        // IMPORTANT:
-        // Do NOT create buttons here.
-        // If buttons exist, Django already decided the user can see them.
-        // If they don't exist, user is NOT an approver.
-      } 
-      else {
-        // Non-pending → draggable again
+        if (!btnRow) {
+          btnRow = document.createElement('div');
+          btnRow.className = 'd-flex justify-content-end gap-1 mb-2 kanban-approval-buttons';
+
+          if (canApprove) {
+            const approveBtn = document.createElement('button');
+            approveBtn.type = 'button';
+            approveBtn.className = 'btn btn-success btn-sm btn-approve';
+            approveBtn.textContent = '✓';
+            btnRow.appendChild(approveBtn);
+          }
+
+          if (canDecline) {
+            const declineBtn = document.createElement('button');
+            declineBtn.type = 'button';
+            declineBtn.className = 'btn btn-danger btn-sm btn-decline';
+            declineBtn.textContent = '✕';
+            btnRow.appendChild(declineBtn);
+          }
+
+          const cardBody = card.querySelector('.card-body');
+          if (cardBody) {
+            cardBody.insertBefore(btnRow, cardBody.firstChild);
+          }
+        }
+      } else {
+        if (btnRow) btnRow.remove();
         card.setAttribute('draggable', 'true');
 
-        // Remove approval buttons if status changed away from PENDING
-        if (btnRow) {
-          btnRow.remove();
-        }
-
-        // Declined visual state
         if (approvalStatus === 'DECLINED') {
           card.classList.add('kanban-card-declined');
         }
       }
     }
-
-    function recomputeCountsAndEmpty() {
+    
+    window.recomputeCountsAndEmpty = function () {
       document.querySelectorAll('.kanban-column').forEach(col => {
         const key = col.dataset.column;
         const body = col.querySelector('.kanban-column-body');
@@ -795,34 +951,5 @@ document.addEventListener("click", function (e) {
   modal.show();
 });
 </script>
-
-<!-- D2D STOCKS TRANSACTIONS MODAL -->
-<div class="modal fade" id="d2dTransactionsModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content">
-
-      <div class="modal-header">
-        <h5 class="modal-title">D2D Stock Transactions</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-
-      <div class="modal-body">
-        <div id="d2d-transactions-content">
-          <div class="text-center text-muted">
-            Loading…
-          </div>
-        </div>
-      </div>
-
-      <div class="modal-footer justify-content-between">
-        <div id="d2d-archive-container"></div>
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-          Close
-        </button>
-      </div>
-
-    </div>
-  </div>
-</div>
 
 {% endblock %}

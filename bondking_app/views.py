@@ -613,7 +613,6 @@ def dr_approve(request, pk):
 def dr_decline(request, pk):
     dr = get_object_or_404(DeliveryReceipt, pk=pk)
 
-    notes = request.POST.get("notes", "")
     sim_role = request.POST.get("sim_role") or None
 
     # First attempt the decline
