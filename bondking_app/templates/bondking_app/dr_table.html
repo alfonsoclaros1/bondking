@@ -30,8 +30,7 @@
             id="client-search"
             placeholder="Search client…"
             autocomplete="off"
-            value="{% for c in clients %}{% if selected.client|stringformat:'s' == c.id|stringformat:'s' %}{{ c.company_name }}{% endif %}{% endfor %}"
-          >
+            value="{% if selected.client_name %} {{ selected.client_name }} {% else %} {% for c in clients %} {% if selected.client|stringformat:'s' == c.id|stringformat:'s' %} {{ c.company_name }} {% endif %} {% endfor %} {% endif %}">
 
           <input
             type="hidden"
@@ -39,7 +38,12 @@
             id="client-id"
             value="{{ selected.client }}"
           >
-
+          <input
+            type="hidden"
+            name="client_name"
+            id="client-name"
+            value="{{ selected.client_name }}"
+          >
           <!-- Suggestions dropdown -->
           <div
             id="client-suggestions"
@@ -644,6 +648,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const q = this.value.trim().toLowerCase();
 
     hidden.value = ""; // reset until selection
+    document.getElementById("client-name").value = this.value.trim();
 
     if (!q) {
       box.style.display = "none";
@@ -666,6 +671,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // ✅ Set hidden client ID (THIS is what the backend reads)
     hidden.value = btn.dataset.id;
+    document.getElementById("client-name").value = "";
 
     // ✅ Hide suggestions
     box.style.display = "none";

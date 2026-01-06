@@ -833,6 +833,13 @@ def dr_table(request):
 
     if end_date:
         qs = qs.filter(date_of_order__lte=end_date)
+    client_id = request.GET.get("client")
+    client_name = request.GET.get("client_name")
+
+    if client_id:
+        qs = qs.filter(client_id=client_id)
+    elif client_name:
+        qs = qs.filter(client__company_name__icontains=client_name)
 
     SORT_OPTIONS = {
         "date_desc": "-date_of_order",
@@ -864,6 +871,7 @@ def dr_table(request):
         "delivery_methods": DeliveryMethod.choices,
         "selected": {
             "client": client_id,
+            "client_name": client_name,   # ✅ ADD THIS
             "agent": agent_id,
             "payment_method": payment_method,
             "payment_status": payment_status,
