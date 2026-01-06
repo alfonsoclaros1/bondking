@@ -1314,13 +1314,10 @@ def dr_table_export(request):
             sales_invoice_no__exact=""
         )
 
-    if hide_archived and hide_cancelled:
-        qs = qs.filter(is_archived=False, is_cancelled=False)
-
-    if not hide_archived:
+    if hide_archived:
         qs = qs.filter(is_archived=False)
 
-    if not hide_cancelled:
+    if hide_cancelled:
         qs = qs.filter(is_cancelled=False)
 
     client = request.GET.get("client")
