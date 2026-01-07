@@ -1,4 +1,6 @@
 {% load static %}
+{% load humanize %}
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -226,8 +228,8 @@ td, th {
   <td>{{ it.product.sku }}</td>
   <td>{{ it.description|default:it.product.name }}</td>
   <td class="center">{{ it.quantity }}</td>
-  <td class="right">₱{{ it.unit_price|floatformat:2 }}</td>
-  <td class="right">₱{{ it.line_total|floatformat:2 }}</td>
+  <td class="right">₱{{ it.unit_price|floatformat:2|intcomma }}</td>
+  <td class="right">₱{{ it.line_total|floatformat:2|intcomma }}</td>
 </tr>
 {% endfor %}
 </tbody>
@@ -275,7 +277,7 @@ td, th {
       <table width="100%">
         <tr>
           <td class="right label">SUBTOTAL</td>
-          <td class="right">₱{{ dr.total_amount|floatformat:2 }}</td>
+          <td class="right">₱{{ dr.total_amount|floatformat:2|intcomma }}</td>
         </tr>
         <tr>
           <td class="right label">SHIPPING</td>
@@ -287,7 +289,7 @@ td, th {
         </tr>
         <tr>
           <td class="right label">TOTAL</td>
-          <td class="right label">₱{{ dr.total_amount|floatformat:2 }}</td>
+          <td class="right label">₱{{ dr.total_amount|floatformat:2|intcomma  }}</td>
         </tr>
       </table>
     </td>
