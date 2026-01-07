@@ -309,7 +309,7 @@
                 {% endif %}
               ">
                 <td class="ps-3">
-                  <a href="{% url 'dr-edit' dr.id %}" class="text-decoration-none fw-semibold">
+                  <a href="{% url 'dr-edit' dr.id %}?from=table&{{ request.GET.urlencode }}" class="text-decoration-none fw-semibold">
                     {{ dr.dr_number }}
                   </a>
                   {% if dr.sales_invoice_no %}
@@ -383,8 +383,10 @@
 
                 <td class="text-end pe-3">
                   <div class="d-inline-flex gap-2">
-                    <a href="{% url 'dr-edit' dr.id %}" class="btn btn-outline-primary btn-sm">Open</a>
-
+                    <a href="{% url 'dr-edit' dr.id %}?from=table&{{ request.GET.urlencode }}"
+                      class="btn btn-outline-primary btn-sm">
+                      Open
+                    </a>
                       {% if is_top_management and not dr.is_cancelled %}
                       <form method="post"
                             action="{% url 'dr-cancel' dr.id %}"

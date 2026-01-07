@@ -105,7 +105,9 @@
                 <div class="mb-1">
                   <div class="fw-semibold">
                     <a href="{% url 'dr-edit' dr.id %}"
-                      class="text-decoration-none text-reset">
+                      class="text-decoration-none text-reset js-dr-nav"
+                      data-dr-id="{{ dr.id }}"
+                      data-column="{{ col.key }}">
                       {{ dr.client.company_name }}
                     </a>
                   </div>
@@ -949,6 +951,25 @@ document.addEventListener("click", function (e) {
     });
 
   modal.show();
+});
+</script>
+<script>
+document.addEventListener("click", function (e) {
+  const link = e.target.closest(".js-dr-nav");
+  if (!link) return;
+
+  e.preventDefault();
+
+  const column = link.dataset.column;
+  const cards = document.querySelectorAll(
+    `.kanban-column[data-column="${column}"] .kanban-card[data-dr-id]`
+  );
+
+  const ids = Array.from(cards).map(c => c.dataset.drId);
+
+  const target = link.getAttribute("href");
+  window.location.href =
+    target + "?from=kanban&nav_ids=" + ids.join(",");
 });
 </script>
 

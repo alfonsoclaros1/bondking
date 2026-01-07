@@ -42,26 +42,22 @@ input[name$="-id"] {
       <!-- ◀ PREVIOUS DR -->
       <div>
         {% if prev_dr %}
-          <a href="{% url 'dr-edit' prev_dr.id %}"
+          <a href="{% url 'dr-edit' prev_dr.id %}{% if nav_querystring %}?{{ nav_querystring }}{% endif %}"
             class="btn btn-outline-secondary btn-sm m-4"
             title="Previous DR">
             prev
           </a>
-        {% else %}
-          <button class="btn btn-outline-secondary btn-sm" disabled>◀</button>
         {% endif %}
       </div>
 
       <!-- NEXT DR ▶ -->
       <div>
         {% if next_dr %}
-          <a href="{% url 'dr-edit' next_dr.id %}"
+          <a href="{% url 'dr-edit' next_dr.id %}{% if nav_querystring %}?{{ nav_querystring }}{% endif %}"
             class="btn btn-outline-secondary btn-sm"
             title="Next DR">
             next
           </a>
-        {% else %}
-          <button class="btn btn-outline-secondary btn-sm" disabled>▶</button>
         {% endif %}
       </div>
 

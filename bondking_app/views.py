@@ -179,19 +179,90 @@ def dr_edit(request, pk):
         .order_by("id")
     )
 
-    prev_dr = (
-        nav_qs
-        .filter(id__lt=dr.id)
-        .order_by("-id")
-        .first()
-    )
+    prev_dr = None
+    next_dr = None
 
-    next_dr = (
-        nav_qs
-        .filter(id__gt=dr.id)
-        .order_by("id")
-        .first()
-    )
+    nav_from = request.GET.get("from")
+    nav_ids = request.GET.get("nav_ids")
+
+    # Keep full querystring EXCEPT page (so prev/next keeps context)
+    qs = request.GET.copy()
+    qs.pop("page", None)
+    nav_querystring = qs.urlencode()
+
+    # -------------------------------
+    # CASE 1: FROM KANBAN
+    # -------------------------------
+    if nav_from == "kanban" and nav_ids:
+        try:
+            id_list = [int(x) for x in nav_ids.split(",")]
+            if dr.id in id_list:
+                idx = id_list.index(dr.id)
+                if idx > 0:
+                    prev_dr = DeliveryReceipt.objects.filter(id=id_list[idx - 1]).first()
+                if idx < len(id_list) - 1:
+                    next_dr = DeliveryReceipt.objects.filter(id=id_list[idx + 1]).first()
+        except Exception:
+            pass
+
+    # -------------------------------
+    # CASE 2: FROM TABLE
+    # -------------------------------
+    elif nav_from == "table":
+        # IMPORTANT: reuse the SAME queryset logic as dr_table
+        qs_table = DeliveryReceipt.objects.all()
+
+        if request.GET.get("hide_archived"):
+            qs_table = qs_table.filter(is_archived=False)
+
+        if request.GET.get("hide_cancelled"):
+            qs_table = qs_table.filter(is_cancelled=False)
+
+        if request.GET.get("payment_status"):
+            qs_table = qs_table.filter(payment_status=request.GET["payment_status"])
+
+        if request.GET.get("delivery_status"):
+            qs_table = qs_table.filter(delivery_status=request.GET["delivery_status"])
+
+        if request.GET.get("payment_method"):
+            qs_table = qs_table.filter(payment_method=request.GET["payment_method"])
+
+        if request.GET.get("delivery_method"):
+            qs_table = qs_table.filter(delivery_method=request.GET["delivery_method"])
+
+        if request.GET.get("client_name"):
+            qs_table = qs_table.filter(client__company_name__icontains=request.GET["client_name"])
+
+        if request.GET.get("dr_number"):
+            qs_table = qs_table.filter(dr_number__icontains=request.GET["dr_number"])
+
+        if request.GET.get("with_sales_invoice"):
+            qs_table = qs_table.exclude(sales_invoice_no__isnull=True).exclude(sales_invoice_no="")
+
+        # ---- SORTING (MATCH dr_table EXACTLY)
+        sort_by = request.GET.get("sort_by", "date_desc")
+
+        if sort_by == "date_asc":
+            qs_table = qs_table.order_by("date_of_order")
+        elif sort_by == "total_desc":
+            qs_table = qs_table.order_by("-total_amount")
+        elif sort_by == "total_asc":
+            qs_table = qs_table.order_by("total_amount")
+        elif sort_by == "dr_desc":
+            qs_table = qs_table.order_by("-dr_number")
+        elif sort_by == "dr_asc":
+            qs_table = qs_table.order_by("dr_number")
+        else:
+            qs_table = qs_table.order_by("-date_of_order")
+
+        ids = list(qs_table.values_list("id", flat=True))
+
+        if dr.id in ids:
+            idx = ids.index(dr.id)
+            if idx > 0:
+                prev_dr = qs_table.filter(id=ids[idx - 1]).first()
+            if idx < len(ids) - 1:
+                next_dr = qs_table.filter(id=ids[idx + 1]).first()
     # ==========================
     # ACTION HANDLING (PO STYLE)
     # ==========================
@@ -371,10 +442,12 @@ def dr_edit(request, pk):
         "kanban_url": kanban_url,
         "dr_flow": lifecycle_steps,
         "has_missing_required": bool(missing_fields),
-        "prev_dr": prev_dr,
-        "next_dr": next_dr,
         "is_top_management": is_top_management(request.user),
         "clients": Client.objects.all().order_by("company_name"),
+        "prev_dr": prev_dr,
+        "next_dr": next_dr,
+        "nav_querystring": nav_querystring,
+
     }
 
     return render(request, "bondking_app/dr_form.html", context)
@@ -756,6 +829,24 @@ def d2d_transactions_api(request, pk):
         "can_archive": can_archive,
         "is_top_management": request.user.is_superuser,
     })
+
+def clean_int(val):
+    """
+    Safely convert GET param to int.
+    Returns None if empty, 'None', non-numeric, etc.
+    """
+    if val in (None, "", "None", "null", "undefined"):
+        return None
+    if str(val).isdigit():
+        return int(val)
+    return None
+def clean_param(val):
+    """
+    Returns None if the param is empty, 'None', 'null', etc.
+    """
+    if val in (None, "", "None", "null", "undefined"):
+        return None
+    return val
 @login_required
 def dr_table(request):
     qs = (
@@ -780,8 +871,8 @@ def dr_table(request):
     # -------------------
     # Filters
     # -------------------
-    client_id = request.GET.get("client", "")
-    agent_id = request.GET.get("agent", "")
+    client_id = clean_int(request.GET.get("client"))
+    agent_id = clean_int(request.GET.get("agent"))
     payment_method = request.GET.get("payment_method", "")
     payment_status = request.GET.get("payment_status", "")
     delivery_status = request.GET.get("delivery_status", "")
@@ -823,8 +914,11 @@ def dr_table(request):
     if delivery_method:
         qs = qs.filter(delivery_method=delivery_method)
 
-    if agent_id.isdigit():
-        qs = qs.filter(agent_id=int(agent_id))
+    if agent_id is not None:
+        qs = qs.filter(agent_id=agent_id)
+
+    if client_id is not None:
+        qs = qs.filter(client_id=client_id)
 
     if payment_method:
         qs = qs.filter(payment_method=payment_method)
@@ -840,13 +934,13 @@ def dr_table(request):
 
     if end_date:
         qs = qs.filter(date_of_order__lte=end_date)
-    client_id = request.GET.get("client")
     client_name = request.GET.get("client_name")
 
     client = clean_param(request.GET.get("client"))
 
     if client and client.isdigit():
         qs = qs.filter(client_id=int(client))
+
     elif client_name:
         qs = qs.filter(client__company_name__icontains=client_name)
 
@@ -1321,7 +1415,7 @@ def dr_table_export(request):
     if hide_cancelled:
         qs = qs.filter(is_cancelled=False)
 
-    client = request.GET.get("client")
+    client = clean_param(request.GET.get("client"))
     client_name = request.GET.get("client_name")
 
     if client and client.isdigit():
