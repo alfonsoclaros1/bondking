@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en">
+{% load static %}
   <head>
     <meta charset="utf-8">
     <title>{% block title %}Bondking System{% endblock %}</title>
@@ -44,13 +45,24 @@
   </head>
 
   <body>
+    <!-- Toast container -->
+    <div
+      id="toast-container"
+      class="toast-container position-fixed top-0 end-0 p-3"
+      style="z-index:1080;">
+    </div>
+
     <!-- Top Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
       <div class="container">
-        <a class="navbar-brand" href="#">
-          Bondking
+        <a class="navbar-brand d-flex align-items-center" href="{% url 'dr-kanban' %}">
+          <img
+            src="{% static 'bondking_app/img/bondking-logo.jpg' %}"
+            alt="Bondking"
+            style="height:32px;"
+            class="me-2"
+          >
         </a>
-
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
                 data-bs-target="#navbarMain" aria-controls="navbarMain"
                 aria-expanded="false" aria-label="Toggle navigation">
@@ -84,14 +96,6 @@
         </div>
       </div>
     </nav>
-      {% if messages %}
-        {% for message in messages %}
-          <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-          </div>
-        {% endfor %}
-      {% endif %}
 
     <!-- Main page content -->
     {% block content %}{% endblock %}
@@ -106,6 +110,53 @@
     <!-- Page-specific JS injected by child templates -->
     {% block extra_js %}{% endblock %}
   </body>
+{% if messages %}
+  <script type="application/json" id="django-messages">
+    [
+      {% for message in messages %}
+        {
+          "text": "{{ message|escapejs }}",
+          "level": "{{ message.tags|default:'success' }}"
+        }{% if not forloop.last %},{% endif %}
+      {% endfor %}
+    ]
+  </script>
+{% endif %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const dataEl = document.getElementById("django-messages");
+  if (!dataEl) return;
+
+  let messages;
+  try {
+    messages = JSON.parse(dataEl.textContent);
+  } catch (e) {
+    console.error("Failed to parse Django messages JSON", e);
+    return;
+  }
+
+  const container = document.getElementById("toast-container");
+
+  messages.forEach(msg => {
+    const toastEl = document.createElement("div");
+    toastEl.className = `toast align-items-center text-bg-${msg.level} border-0`;
+    toastEl.role = "alert";
+    toastEl.innerHTML = `
+      <div class="d-flex">
+        <div class="toast-body">${msg.text}</div>
+        <button type="button"
+                class="btn-close btn-close-white me-2 m-auto"
+                data-bs-dismiss="toast"></button>
+      </div>
+    `;
+
+    container.appendChild(toastEl);
+    const toast = new bootstrap.Toast(toastEl, { delay: 3500 });
+    toast.show();
+  });
+});
+</script>
+
 
 
 </html>

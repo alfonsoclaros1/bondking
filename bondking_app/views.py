@@ -340,10 +340,11 @@ def dr_edit(request, pk):
                 new_val = getattr(dr, field)
                 if old_val != new_val:
                     label = field.replace("_", " ").title()
-                    dr.log_update(
+                    message = dr.log_update(
                         request.user,
                         f"{label} was set to {new_val} by {request.user.get_full_name() or request.user.username}",
                     )
+                    messages.success(request, message)
 
             return redirect("dr-edit", pk=dr.pk)
 

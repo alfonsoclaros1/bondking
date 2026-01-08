@@ -1,4 +1,5 @@
 from datetime import timedelta
+from pyexpat.errors import messages
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -586,6 +587,7 @@ class DeliveryReceipt(models.Model):
             system_update=message,
             user_notes=user_notes or "",
         )
+        return message
     def get_next_step_meta(self):
         _, next_step = self.get_current_and_next_step()
         if not next_step:
@@ -749,7 +751,8 @@ class DeliveryReceipt(models.Model):
                 msg = f"Door-to-Door moved from NEW_DR to DELIVERED by {actor_role}."
                 if user_notes:
                     msg += f" Notes: {user_notes}"
-                self.log_update(user=user, message=msg, user_notes=user_notes)
+                message = self.log_update(user=user, message=msg, user_notes=user_notes)
+                messages.success(user, message)
                 return
 
             # Standard rule: must move to the next step only (adjacent)
@@ -792,7 +795,8 @@ class DeliveryReceipt(models.Model):
                 msg = f"Door-to-Door reverted from DELIVERED to NEW_DR by {actor_role}."
                 if user_notes:
                     msg += f" Notes: {user_notes}"
-                self.log_update(user=user, message=msg, user_notes=user_notes)
+                message = self.log_update(user=user, message=msg, user_notes=user_notes)
+                messages.success(user, message)
                 return
 
             # CASH backward rules (exactly as your code)
@@ -856,7 +860,8 @@ class DeliveryReceipt(models.Model):
         msg = f"Moved from {current_column} to {target_column} as {actor_role}."
         if user_notes:
             msg += f" Notes: {user_notes}"
-        self.log_update(user=user, message=msg, user_notes=user_notes)
+        message = self.log_update(user=user, message=msg, user_notes=user_notes)
+        messages.success(user, message)
 
     # ====== Approval / Decline ======
     def approve_current_step(self, user, user_notes: str = "", simulated_role: str | None = None):
@@ -884,7 +889,8 @@ class DeliveryReceipt(models.Model):
         msg = f"Approved in column {column} as {actor_role}."
         if user_notes:
             msg += f" Notes: {user_notes}"
-        self.log_update(user=user, message=msg, user_notes=user_notes)
+        message = self.log_update(user=user, message=msg, user_notes=user_notes)
+        messages.success(user, message)
 
     def decline_current_step(self, user, user_notes: str = "", simulated_role: str | None = None):
         if simulated_role and is_top_management(user):
@@ -925,7 +931,8 @@ class DeliveryReceipt(models.Model):
             msg = f"Declined in NEW_DR as {actor_role}. Returned to Sales Agent for editing."
             if user_notes:
                 msg += f" Notes: {user_notes}"
-            self.log_update(user=user, message=msg, user_notes=user_notes)
+            message = self.log_update(user=user, message=msg, user_notes=user_notes)
+            messages.success(user, message)
             return
 
         lifecycle = DeliveryReceipt.dr_lifecycle_for(self)
@@ -939,7 +946,8 @@ class DeliveryReceipt(models.Model):
             self.payment_status = PaymentStatus.NA
             self.approval_status = ApprovalStatus.DECLINED
             self.save(update_fields=["delivery_status", "payment_status", "approval_status", "updated_at"])
-            self.log_update(user, "Declined – moved back to Delivered (Cash rule)")
+            message = self.log_update(user, "Declined – moved back to Delivered (Cash rule)")
+            messages.success(user, message)
             return
 
         idx = lifecycle.index(current_column)
@@ -965,7 +973,8 @@ class DeliveryReceipt(models.Model):
         msg = f"Declined in {current_column} as {actor_role}. Moved back to {prev_column} for clarification."
         if user_notes:
             msg += f" Notes: {user_notes}"
-        self.log_update(user=user, message=msg, user_notes=user_notes)
+        message = self.log_update(user=user, message=msg, user_notes=user_notes)
+        messages.success(user, message)
 
     # ====== DR number helper ======
     def get_missing_required_before_forward(self):
@@ -1443,7 +1452,8 @@ class PurchaseOrder(models.Model):
         self.approval_status = POApprovalStatus.PENDING
         self.save(update_fields=["status", "approval_status", "updated_at"])
 
-        self.log_update(user, f"Submitted forward to {nxt}.", user_notes=user_notes)
+        message = self.log_update(user, f"Submitted forward to {nxt}.", user_notes=user_notes)
+        messages.success(user, message)
 
     def approve_current_step(self, user, user_notes: str = "", simulated_role: str | None = None):
         actor_role = self.resolve_actor_role(user, simulated_role)
@@ -1484,19 +1494,21 @@ class PurchaseOrder(models.Model):
             self.status = POStatus.PURCHASE_ORDER
             self.approval_status = POApprovalStatus.APPROVED
             self.save(update_fields=["status", "approval_status", "updated_at"])
-            self.log_update(user, "RFP approved. Moved to Purchase Order.")
+            message = self.log_update(user, "RFP approved. Moved to Purchase Order.")
+            messages.success(user, message)
             return
 
         if col == POStatus.PURCHASE_ORDER_APPROVAL:
             self.po_number = PurchaseOrder.get_next_po_number()
             self.status = POStatus.CHECK_CREATION
-            self.log_update(user, "PO Created. Moved to Purchase Check Creation.")
+            message = self.log_update(user, "PO Created. Moved to Purchase Check Creation.")
+            messages.success(user, message)
 
         self.approval_status = POApprovalStatus.APPROVED
         self.save(update_fields=["status", "po_number", "approval_status", "updated_at"])
 
-        self.log_update(user=user, message=f"Approved in column {col} as {actor_role}.", user_notes=user_notes)
-
+        message = self.log_update(user=user, message=f"Approved in column {col} as {actor_role}.", user_notes=user_notes)
+        messages.success(user, message)
     def decline_current_step(self, user, user_notes: str = "", simulated_role: str | None = None):
         actor_role = self.resolve_actor_role(user, simulated_role)
 
@@ -1522,7 +1534,8 @@ class PurchaseOrder(models.Model):
             raise PermissionDenied(f"Role {actor_role} is not allowed to decline in {current_column}.")
         
         if current_column == POStatus.REQUEST_FOR_PAYMENT_APPROVAL:
-            self.log_update(user, "Declined at RFP Approval. PO deleted.")
+            message = self.log_update(user, "Declined at RFP Approval. PO deleted.")
+            messages.success(user, message)
             self.delete()
             return
 
@@ -1531,11 +1544,12 @@ class PurchaseOrder(models.Model):
             # stay, mark declined
             self.approval_status = POApprovalStatus.DECLINED
             self.save(update_fields=["approval_status", "updated_at"])
-            self.log_update(
+            message = self.log_update(
                 user=user,
                 message=f"Declined in REQUEST_FOR_PAYMENT as {actor_role}. Returned for clarification.",
                 user_notes=user_notes,
             )
+            messages.success(user, message)
             return
 
         # move back one column, mark declined
@@ -1545,11 +1559,12 @@ class PurchaseOrder(models.Model):
         self.approval_status = POApprovalStatus.DECLINED
         self.save(update_fields=["status", "approval_status", "updated_at"])
 
-        self.log_update(
+        message = self.log_update(
             user=user,
             message=f"Declined in {current_column} as {actor_role}. Moved back to {prev_column}.",
             user_notes=user_notes,
         )
+        messages.success(user, message)
 
     @classmethod
     def get_next_po_number(cls):
