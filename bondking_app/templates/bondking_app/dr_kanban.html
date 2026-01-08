@@ -177,7 +177,31 @@
         <div class="kanban-column-header">
           <div class="d-flex justify-content-between align-items-center mb-1">
             <strong>D2D Stocks</strong>
-            <span class="badge bg-secondary">{{ d2d_stocks|length }}</span>
+            
+              <!-- SEARCH ICON -->
+              <button
+                type="button"
+                class="btn btn-sm btn-light kanban-search-toggle"
+                data-column="{{ col.key }}"
+                title="Search"
+              >
+                🔍
+              </button>
+
+              <!-- SORT ICON -->
+              <button
+                type="button"
+                class="btn btn-sm btn-light kanban-sort-toggle"
+                data-column="{{ col.key }}"
+                title="Sort"
+              >
+                ⇅
+              </button>
+
+              <!-- COUNT -->
+              <span class="badge bg-secondary" id="count-{{ col.key }}">
+                {{ col.items|length }}
+              </span>
           </div>
         </div>
 
