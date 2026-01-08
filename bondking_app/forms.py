@@ -379,9 +379,16 @@ class DeliveryReceiptItemForm(forms.ModelForm):
         if self.stage != "NEW_DR":
             for name, field in self.fields.items():
                 field.required = False  # Prevent validation errors
-                field.widget.attrs["readonly"] = True
+                if name == "product":
+                    # 🔒 SKU dropdown → must use disabled
+                    field.disabled = True
+                else:
+                    # 🔒 inputs (description, qty, price)
+                    field.widget.attrs["readonly"] = True
                 field.widget.attrs["tabindex"] = "-1"
                 field.widget.attrs["style"] = "background:#f8f9fa;"
+
+        self.fields["description"].widget.attrs["readonly"] = True
 
 
 
@@ -399,15 +406,9 @@ class BaseDeliveryReceiptItemFormSet(BaseInlineFormSet):
             self.can_delete = False
             self.extra = 0
 
-        for form in self.forms:
-            form.stage = self.stage
-            if self.stage != "NEW_DR":
-                for name, field in form.fields.items():
-                    field.required = False
-                    field.widget.attrs["readonly"] = True
-                    field.widget.attrs["tabindex"] = "-1"
-                    field.widget.attrs["style"] = "background:#f8f9fa;"
-
+    def _construct_form(self, i, **kwargs):
+        kwargs["stage"] = self.stage
+        return super()._construct_form(i, **kwargs)
 
 
 DeliveryReceiptItemFormSet = inlineformset_factory(
