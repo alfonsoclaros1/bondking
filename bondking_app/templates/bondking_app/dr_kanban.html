@@ -52,10 +52,34 @@
         <div class="kanban-column-header">
           <div class="d-flex justify-content-between align-items-center">
             <strong>{{ col.label }}</strong>
-            <span class="badge bg-secondary" id="count-{{ col.key }}">
-              {{ col.items|length }}
-            </span>
+            <div class="d-flex align-items-center gap-1">
+              <!-- SEARCH ICON -->
+              <button
+                type="button"
+                class="btn btn-sm btn-light kanban-search-toggle"
+                data-column="{{ col.key }}"
+                title="Search"
+              >
+                🔍
+              </button>
+
+              <!-- SORT ICON -->
+              <button
+                type="button"
+                class="btn btn-sm btn-light kanban-sort-toggle"
+                data-column="{{ col.key }}"
+                title="Sort"
+              >
+                ⇅
+              </button>
+
+              <!-- COUNT -->
+              <span class="badge bg-secondary" id="count-{{ col.key }}">
+                {{ col.items|length }}
+              </span>
+            </div>
           </div>
+
         </div>
         <div class="kanban-column-body" data-column="{{ col.key }}">
           {% if col.items %}
@@ -74,6 +98,11 @@
               data-approve-url="{% url 'dr-approve' dr.id %}"
               data-decline-url="{% url 'dr-decline' dr.id %}"
               data-archive-url="{% url 'dr-archive' dr.id %}"
+              data-dr-number="{{ dr.dr_number }}"
+              data-client="{{ dr.client.company_name|lower }}"
+              data-agent="{{ dr.agent.get_full_name|default:dr.agent.username|lower }}"
+              data-date="{{ dr.date_of_order|date:'Y-m-d' }}"
+              data-amount="{{ dr.total_amount }}"
             >
               <div class="card-body p-2">
                 {# Approve / Decline above the title #}
@@ -146,13 +175,12 @@
     <div class="kanban-column-wrapper">
       <div class="kanban-column d2d-stocks-column">
         <div class="kanban-column-header">
-          <div class="d-flex justify-content-between align-items-center">
+          <div class="d-flex justify-content-between align-items-center mb-1">
             <strong>D2D Stocks</strong>
-            <span class="badge bg-secondary">
-              {{ d2d_stocks|length }}
-            </span>
+            <span class="badge bg-secondary">{{ d2d_stocks|length }}</span>
           </div>
         </div>
+
 
         <div class="kanban-column-body d2d-stocks-body">
           {% if d2d_stocks %}
@@ -160,6 +188,11 @@
             <div class="kanban-card card mb-2 d2d-stock-card"
                 draggable="false"
                 data-dr-id="{{ dr.id }}"
+                data-dr-number="{{ dr.dr_number }}"
+                data-client="{{ dr.client.company_name|lower }}"
+                data-amount="{{ dr.total_amount }}"
+                data-agent="{{ dr.agent.get_full_name|default:dr.agent.username|lower }}"
+                data-date="{{ dr.date_of_order|date:'Y-m-d' }}"
                 data-archive-url="{% url 'dr-archive' dr.id %}">
               <div class="card-body p-2">
 
@@ -295,6 +328,29 @@
   </div>
 </div>
 
+
+<!-- FLOATING SEARCH -->
+<div id="kanban-search-popover" class="kanban-popover d-none">
+  <input
+    type="text"
+    class="form-control form-control-sm"
+    placeholder="Search DR, Agent or Client…"
+    id="kanban-search-input"
+  />
+</div>
+
+<!-- FLOATING SORT -->
+<div id="kanban-sort-popover" class="kanban-popover d-none">
+  <div class="list-group list-group-flush">
+    <button class="list-group-item list-group-item-action" data-sort="date_desc">Date ↓</button>
+    <button class="list-group-item list-group-item-action" data-sort="date_asc">Date ↑</button>
+    <button class="list-group-item list-group-item-action" data-sort="dr_asc">DR ↑</button>
+    <button class="list-group-item list-group-item-action" data-sort="dr_desc">DR ↓</button>
+    <button class="list-group-item list-group-item-action" data-sort="amount_desc">Amount ↓</button>
+    <button class="list-group-item list-group-item-action" data-sort="amount_asc">Amount ↑</button>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_css %}
@@ -309,7 +365,7 @@
   .kanban-column-wrapper {
     flex: 0 0 auto;
     min-width: 200px;
-    max-width: 280px;
+    max-width: 300px;
   }
 
   .kanban-column {
@@ -373,6 +429,16 @@
     text-align: center;
   }
   
+.kanban-popover {
+  position: absolute;
+  z-index: 1050;
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  box-shadow: 0 0.5rem 1rem rgba(0,0,0,.15);
+  width: 220px;
+}
 
   @media (max-width: 768px) {
     .kanban-column-wrapper {
@@ -390,6 +456,9 @@
   .d2d-stock-card {
     cursor: default;
   }
+.is-filtered-out {
+  display: none !important;
+}
 
 </style>
 
@@ -972,5 +1041,154 @@ document.addEventListener("click", function (e) {
     target + "?from=kanban&nav_ids=" + ids.join(",");
 });
 </script>
+
+
+<script>
+(function () {
+
+  let activeColumn = null;
+  const searchPopover = document.getElementById("kanban-search-popover");
+  const sortPopover = document.getElementById("kanban-sort-popover");
+  const searchInput = document.getElementById("kanban-search-input");
+
+  function hidePopovers() {
+    searchPopover.classList.add("d-none");
+    sortPopover.classList.add("d-none");
+    activeColumn = null;
+  }
+
+  document.addEventListener("click", function (e) {
+
+    /* SEARCH ICON */
+    const searchBtn = e.target.closest(".kanban-search-toggle");
+    if (searchBtn) {
+      e.stopPropagation();
+      activeColumn = searchBtn.dataset.column;
+
+      const rect = searchBtn.getBoundingClientRect();
+      searchPopover.style.top = rect.bottom + window.scrollY + "px";
+      searchPopover.style.left = rect.left + "px";
+
+      searchPopover.classList.remove("d-none");
+      sortPopover.classList.add("d-none");
+
+      searchInput.value = "";
+      searchInput.focus();
+      return;
+    }
+
+    /* SORT ICON */
+    const sortBtn = e.target.closest(".kanban-sort-toggle");
+    if (sortBtn) {
+      e.stopPropagation();
+      activeColumn = sortBtn.dataset.column;
+
+      const rect = sortBtn.getBoundingClientRect();
+      sortPopover.style.top = rect.bottom + window.scrollY + "px";
+      sortPopover.style.left = rect.left + "px";
+
+      sortPopover.classList.remove("d-none");
+      searchPopover.classList.add("d-none");
+      return;
+    }
+
+    /* SORT OPTION CLICK */
+    const sortOption = e.target.closest("[data-sort]");
+    if (sortOption && activeColumn) {
+      const mode = sortOption.dataset.sort;
+      const body = document.querySelector(
+        `.kanban-column-body[data-column="${activeColumn}"]`
+      );
+
+      const cards = Array.from(body.querySelectorAll(".kanban-card"));
+
+      const sorters = {
+        date_asc: (a, b) => a.dataset.date.localeCompare(b.dataset.date),
+        date_desc: (a, b) => b.dataset.date.localeCompare(a.dataset.date),
+        dr_asc: (a, b) => a.dataset.drNumber.localeCompare(b.dataset.drNumber),
+        dr_desc: (a, b) => b.dataset.drNumber.localeCompare(a.dataset.drNumber),
+        amount_asc: (a, b) => parseFloat(a.dataset.amount) - parseFloat(b.dataset.amount),
+        amount_desc: (a, b) => parseFloat(b.dataset.amount) - parseFloat(a.dataset.amount),
+      };
+
+      cards.sort(sorters[mode]).forEach(c => body.appendChild(c));
+      hidePopovers();
+      return;
+    }
+
+    /* CLICK OUTSIDE */
+    if (!e.target.closest(".kanban-popover")) {
+      hidePopovers();
+    }
+  });
+  searchInput.addEventListener("input", function () {
+    if (!activeColumn) return;
+
+    const q = this.value.toLowerCase();
+
+    let cards;
+
+    // D2D special case
+    if (activeColumn === "D2D_STOCKS") {
+      cards = document.querySelectorAll(
+        `.d2d-stocks-body .kanban-card`
+      );
+    } else {
+      cards = document.querySelectorAll(
+        `.kanban-column-body[data-column="${activeColumn}"] .kanban-card`
+      );
+    }
+
+    cards.forEach(card => {
+      const dr = (card.dataset.drNumber || "").toLowerCase();
+      const client = (card.dataset.client || "").toLowerCase();
+      const agent = (card.dataset.agent || "").toLowerCase();
+
+      const matched =
+        dr.includes(q) ||
+        client.includes(q) ||
+        agent.includes(q);
+
+      card.classList.toggle("is-filtered-out", !matched);
+    });
+    // Update visible count badge for this column
+    let visibleCount = 0;
+    cards.forEach(c => {
+      if (!c.classList.contains("is-filtered-out")) visibleCount++;
+    });
+
+    const badge = document.getElementById("count-" + activeColumn);
+    if (badge) badge.textContent = visibleCount;
+
+  });
+
+  /* ENTER KEY HANDLER */
+  searchInput.addEventListener("keydown", function (e) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+
+    // Close popover but KEEP activeColumn
+    searchPopover.classList.add("d-none");
+  }
+
+
+    if (e.key === "Escape") {
+      e.preventDefault();
+
+      // Clear filter + close
+      this.value = "";
+      document.querySelectorAll(".kanban-card").forEach(c => {
+        c.classList.remove("is-filtered-out");
+      });
+      recomputeCountsAndEmpty(); // restore correct counts
+
+      searchPopover.classList.add("d-none");
+      activeColumn = null;
+    }
+  });
+
+})();
+</script>
+
 
 {% endblock %}
