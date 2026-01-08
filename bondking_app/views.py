@@ -17,6 +17,7 @@ from django.contrib import messages
 from django.db import transaction
 import pdfkit
 from django.template.loader import get_template,render_to_string
+from django.templatetags.static import static
 
 from bondking import settings
 
@@ -2228,17 +2229,21 @@ def product_id_quick_create(request):
 @login_required
 def dr_print(request, pk):
     dr = get_object_or_404(DeliveryReceipt, pk=pk)
-
-    template = get_template("bondking_app/dr_print.html")
-    html = template.render({
-        "dr": dr,
-        "client": dr.client,
-        "items": dr.items.select_related("product").all(),
-        "shipping": 0,
-        "other": 0,
-        "STATIC_ROOT_URL": request.build_absolute_uri(settings.STATIC_URL),
-    })
-
+    logo_url = request.build_absolute_uri(
+        static("bondking_app/img/bondking-logo.png")
+    )
+    html = render_to_string(
+        "bondking_app/dr_print.html",
+        {
+            "dr": dr,
+            "client": dr.client,
+            "items": dr.items.select_related("product").all(),
+            "shipping": 0,
+            "other": 0,
+            "logo_url": logo_url,  # ✅ add this
+        },
+        request=request,  # ✅ IMPORTANT
+    )
     # ✅ Explicit environment detection
     IS_RENDER = os.environ.get("RENDER") == "true"
 
