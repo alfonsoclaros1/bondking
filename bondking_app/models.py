@@ -1,5 +1,5 @@
 from datetime import timedelta
-from pyexpat.errors import messages
+from django.contrib import messages
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -751,8 +751,8 @@ class DeliveryReceipt(models.Model):
                 msg = f"Door-to-Door moved from NEW_DR to DELIVERED by {actor_role}."
                 if user_notes:
                     msg += f" Notes: {user_notes}"
-                message = self.log_update(user=user, message=msg, user_notes=user_notes)
-                messages.success(user, message)
+                self.log_update(user=user, message=msg, user_notes=user_notes)
+                messages.success(user, msg)
                 return
 
             # Standard rule: must move to the next step only (adjacent)
@@ -792,11 +792,11 @@ class DeliveryReceipt(models.Model):
                 self.approval_status = ApprovalStatus.PENDING
                 self.save(update_fields=["delivery_status", "payment_status", "approval_status"])
 
-                msg = f"Door-to-Door reverted from DELIVERED to NEW_DR by {actor_role}."
+                msg = f"Door-to-Door reverted from DELIVERED to NEW DR by {actor_role}."
                 if user_notes:
                     msg += f" Notes: {user_notes}"
-                message = self.log_update(user=user, message=msg, user_notes=user_notes)
-                messages.success(user, message)
+                self.log_update(user=user, message=msg, user_notes=user_notes)
+                messages.success(user, msg)
                 return
 
             # CASH backward rules (exactly as your code)
@@ -860,8 +860,8 @@ class DeliveryReceipt(models.Model):
         msg = f"Moved from {current_column} to {target_column} as {actor_role}."
         if user_notes:
             msg += f" Notes: {user_notes}"
-        message = self.log_update(user=user, message=msg, user_notes=user_notes)
-        messages.success(user, message)
+        self.log_update(user=user, message=msg, user_notes=user_notes)
+        messages.success(user, msg)
 
     # ====== Approval / Decline ======
     def approve_current_step(self, user, user_notes: str = "", simulated_role: str | None = None):
@@ -889,8 +889,8 @@ class DeliveryReceipt(models.Model):
         msg = f"Approved in column {column} as {actor_role}."
         if user_notes:
             msg += f" Notes: {user_notes}"
-        message = self.log_update(user=user, message=msg, user_notes=user_notes)
-        messages.success(user, message)
+        self.log_update(user=user, message=msg, user_notes=user_notes)
+        messages.success(user, msg)
 
     def decline_current_step(self, user, user_notes: str = "", simulated_role: str | None = None):
         if simulated_role and is_top_management(user):
@@ -931,8 +931,8 @@ class DeliveryReceipt(models.Model):
             msg = f"Declined in NEW_DR as {actor_role}. Returned to Sales Agent for editing."
             if user_notes:
                 msg += f" Notes: {user_notes}"
-            message = self.log_update(user=user, message=msg, user_notes=user_notes)
-            messages.success(user, message)
+            self.log_update(user=user, message=msg, user_notes=user_notes)
+            messages.success(user, msg)
             return
 
         lifecycle = DeliveryReceipt.dr_lifecycle_for(self)
@@ -1393,6 +1393,7 @@ class PurchaseOrder(models.Model):
             system_update=message,
             user_notes=user_notes or "",
         )
+        return message
 
     def prev_status(self):
         if self.status not in PO_COLUMN_INDEX:
