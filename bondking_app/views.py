@@ -344,7 +344,6 @@ def dr_edit(request, pk):
                         request.user,
                         f"{label} was set to {new_val} by {request.user.get_full_name() or request.user.username}",
                     )
-                    messages.success(request, message)
 
             return redirect("dr-edit", pk=dr.pk)
 
@@ -416,8 +415,6 @@ def dr_edit(request, pk):
             "Resolved rejection and returned DR to Pending approval.",
             user_notes=resolved_note,
         )
-
-        messages.success(request, "DR resolved and returned for approval.")
         return redirect("dr-edit", pk=dr.pk)
 
 
@@ -657,6 +654,14 @@ def move_dr(request, pk):
 @require_POST
 @login_required
 def dr_approve(request, pk):
+
+    # ✅ ADD THIS (TOP OF FUNCTION)
+    if request.headers.get("x-requested-with") != "XMLHttpRequest":
+        return JsonResponse(
+            {"ok": False, "error": "Invalid request type"},
+            status=400
+        )
+
     dr = get_object_or_404(DeliveryReceipt, pk=pk)
 
     notes = request.POST.get("notes", "")
@@ -668,22 +673,25 @@ def dr_approve(request, pk):
             user_notes=notes,
             simulated_role=sim_role,
         )
-        
-        current_stage = dr.get_current_column()
 
-        if current_stage == "FOR_DELIVERY":
-            if not dr.payment_due:
-                dr.payment_due = date.today() + timedelta(days=3)
-                dr.save(update_fields=["payment_due"])
+        current_stage = dr.get_current_column()
+        if current_stage == "FOR_DELIVERY" and not dr.payment_due:
+            dr.payment_due = date.today() + timedelta(days=3)
+            dr.save(update_fields=["payment_due"])
+
     except (ValidationError, PermissionDenied) as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=400)
 
-    return JsonResponse(
-        {
-            "ok": True,
-            "approval_status": dr.approval_status,
-        }
-    )
+    except Exception as e:
+        # ✅ PREVENT HTML ERROR PAGE
+        traceback.print_exc()
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+
+    return JsonResponse({
+        "ok": True,
+        "approval_status": dr.approval_status,
+    })
+
 
 
 @require_POST
@@ -743,6 +751,7 @@ def dr_decline(request, pk):
         }
     )
 
+@require_POST
 @login_required
 def archive_dr(request, dr_id):
     if not request.user.groups.filter(name="TopManagement").exists() and not request.user.is_superuser:
@@ -1781,9 +1790,7 @@ def cancel_dr(request, pk):
     dr.save(update_fields=["is_cancelled", "is_archived", "updated_at"])
 
     dr.log_update(request.user, "Cancelled DR.")
-
-    dr.log_update(request.user, "Cancelled DR.")
-    return redirect("dr-table")
+    return JsonResponse({"ok": True})
 
 @require_POST
 @login_required
