@@ -190,7 +190,28 @@ def dr_edit(request, pk):
     qs = request.GET.copy()
     qs.pop("page", None)
     nav_querystring = qs.urlencode()
+    # =========================
+    # DR NAVIGATION (nav_ids OVERRIDE — NON-DESTRUCTIVE)
+    # =========================
+    prev_dr = None
+    next_dr = None
 
+    nav_ids = request.GET.get("nav_ids")
+
+    if nav_ids:
+        try:
+            id_list = [int(x) for x in nav_ids.split(",")]
+
+            if dr.id in id_list:
+                idx = id_list.index(dr.id)
+
+                if idx > 0:
+                    prev_dr = DeliveryReceipt.objects.filter(id=id_list[idx - 1]).first()
+
+                if idx < len(id_list) - 1:
+                    next_dr = DeliveryReceipt.objects.filter(id=id_list[idx + 1]).first()
+        except Exception:
+            pass
     # -------------------------------
     # CASE 1: FROM KANBAN
     # -------------------------------
@@ -209,7 +230,7 @@ def dr_edit(request, pk):
     # -------------------------------
     # CASE 2: FROM TABLE
     # -------------------------------
-    elif nav_from == "table":
+    elif nav_from == "table" and not nav_ids:
         # IMPORTANT: reuse the SAME queryset logic as dr_table
         qs_table = DeliveryReceipt.objects.all()
 
