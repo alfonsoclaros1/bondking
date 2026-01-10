@@ -22,259 +22,149 @@
   <div class="card shadow-sm mb-3">
     <div class="card-body">
       <form method="get" class="row g-2 align-items-end">
-        <div class="col-12 col-md-3 position-relative">
-          <label class="form-label small text-muted">Client</label>
-          <input
-            type="text"
-            class="form-control form-control-sm"
-            id="client-search"
-            placeholder="Search client…"
-            autocomplete="off"
-            value="{{ selected.client_display }}">
-
-          <input
-            type="hidden"
-            name="client"
-            id="client-id"
-            value="{{ selected.client }}"
-          >
-          <input
-            type="hidden"
-            name="client_name"
-            id="client-name"
-            value="{{ selected.client_name }}"
-          >
-          <!-- Suggestions dropdown -->
-          <div
-            id="client-suggestions"
-            class="list-group position-absolute w-100 shadow-sm"
-            style="z-index: 1050; display: none; max-height: 240px; overflow-y: auto;"
-          ></div>
-
-          <!-- Preload clients as JSON -->
-          <script type="application/json" id="client-data">
-            [
-              {% for c in clients %}
-                {
-                  "id": {{ c.id }},
-                  "name": "{{ c.company_name|escapejs }}"
-                }{% if not forloop.last %},{% endif %}
-              {% endfor %}
-            ]
-          </script>
-        </div>
-
-
-
-        <div class="col-12 col-md-3">
-          <label class="form-label small text-muted">Agent</label>
-          <select name="agent" class="form-select form-select-sm">
-            <option value="">All</option>
-            {% for a in agents %}
-              <option value="{{ a.id }}" {% if selected.agent|stringformat:"s" == a.id|stringformat:"s" %}selected{% endif %}>
-                {{ a.get_full_name|default:a.username }}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <div class="col-12 col-md-3">
-          <label class="form-label small text-muted">Payment Method</label>
-          <select name="payment_method" class="form-select form-select-sm">
-            <option value="">All</option>
-            {% for val,label in payment_methods %}
-              <option value="{{ val }}" {% if selected.payment_method == val %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label small text-muted">Payment Status</label>
-          <select name="payment_status" class="form-select form-select-sm">
-            <option value="">All</option>
-            {% for val, label in payment_statuses %}
-              <option
-                value="{{ val }}"
-                {% if selected.payment_status == val %}selected{% endif %}
-              >
-                {{ label }}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-        <!-- =========================
-            ADDITIONAL FILTERS (ROW 2)
-        ========================= -->
+        <!-- SMART SEARCH (GLOBAL) -->
         <div class="col-12">
-          <div class="row g-2 mt-2 align-items-end">
+          <label class="form-label small text-muted">Search</label>
 
+          <div class="bk-search-wrap">
+            <input
+              type="text"
+              class="form-control form-control-sm"
+              id="bk-global-search"
+              placeholder='Type to search (e.g., AGR, Delivered, Cash, 2025-0001)...'
+              autocomplete="off"
+            >
 
-            <!-- DR NUMBER -->
-            <div class="col-12 col-md-3 position-relative">
-              <label class="form-label small text-muted">DR Number</label>
-              <input
-                type="text"
-                class="form-control form-control-sm"
-                id="dr-search"
-                placeholder="Search DR #…"
-                autocomplete="off"
-                value="{{ selected.dr_number }}"
-              >
-              <input type="hidden" name="dr_number" id="dr-number-hidden">
+            <div id="bk-tags" class="bk-tags mt-2"></div>
 
-              <div
-                id="dr-suggestions"
-                class="list-group position-absolute w-100 shadow-sm"
-                style="z-index:1050; display:none; max-height:240px; overflow-y:auto;"
-              ></div>
+            <!-- Suggestions -->
+            <div
+              id="bk-suggestions"
+              class="list-group position-absolute w-100 shadow-sm"
+              style="z-index: 1050; display:none; max-height: 280px; overflow-y:auto;"
+            ></div>
 
-              <script type="application/json" id="dr-data">
-                [
-                  {% for d in page_obj.paginator.object_list %}
-                    "{{ d.dr_number }}"{% if not forloop.last %},{% endif %}
-                  {% endfor %}
-                ]
-              </script>
-            </div>
+            <!-- Hidden inputs container (tags written here before submit) -->
+            <div id="bk-hidden-inputs"></div>
 
-            <!-- DUE DATE START -->
+            <!-- Primary keyword (q) -->
+            <input type="hidden" name="q" id="bk-q" value="{{ selected.q|default:'' }}">
+            <input type="hidden" name="sort_by" id="bk-sort-by" value="{{ sort_by }}">
+          </div>
+        </div>
+
+        <!-- MORE FILTERS TOGGLE -->
+        <div class="col-12">
+          <button
+            type="button"
+            class="btn btn-link p-0 small d-inline-flex align-items-center gap-1"
+            id="bk-more-filters-btn"
+          >
+            <span id="bk-more-filters-text">More Filters</span>
+            <i class="bi bi-chevron-down transition-icon" id="bk-more-filters-icon"></i>
+          </button>
+        </div>
+
+        <!-- ADVANCED FILTERS (COLLAPSIBLE) -->
+        <div class="col-12" id="bk-more-filters-panel" style="display:none;">
+          <div class="row g-2 align-items-end mt-1">
+
             <div class="col-12 col-md-3">
-              <label class="form-label small text-muted">Due Date (From)</label>
-              <input
-                type="date"
-                name="due_start"
-                class="form-control form-control-sm"
-                value="{{ selected.due_start }}"
-              >
+              <label class="form-label small text-muted">Payment Status</label>
+              <select name="payment_status" class="form-select form-select-sm">
+                <option value="">All</option>
+                {% for val, label in payment_statuses %}
+                  <option value="{{ val }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text small text-muted">Use Smart Search for multiple.</div>
             </div>
 
-            <!-- DUE DATE END -->
             <div class="col-12 col-md-3">
-              <label class="form-label small text-muted">Due Date (To)</label>
-              <input
-                type="date"
-                name="due_end"
-                class="form-control form-control-sm"
-                value="{{ selected.due_end }}"
-              >
+              <label class="form-label small text-muted">Delivery Status</label>
+              <select name="delivery_status" class="form-select form-select-sm">
+                <option value="">All</option>
+                {% for val,label in delivery_statuses %}
+                  <option value="{{ val }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text small text-muted">Use Smart Search for multiple.</div>
             </div>
 
-            <!-- DELIVERY METHOD -->
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted">Payment Method</label>
+              <select name="payment_method" class="form-select form-select-sm">
+                <option value="">All</option>
+                {% for val,label in payment_methods %}
+                  <option value="{{ val }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text small text-muted">Use Smart Search for multiple.</div>
+            </div>
+
             <div class="col-12 col-md-3">
               <label class="form-label small text-muted">Delivery Method</label>
               <select name="delivery_method" class="form-select form-select-sm">
                 <option value="">All</option>
                 {% for val,label in delivery_methods %}
-                  <option value="{{ val }}"
-                    {% if selected.delivery_method == val %}selected{% endif %}
-                  >
-                    {{ label }}
-                  </option>
+                  <option value="{{ val }}">{{ label }}</option>
                 {% endfor %}
               </select>
+              <div class="form-text small text-muted">Use Smart Search for multiple.</div>
+            </div>
+
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted">Due Date (From)</label>
+              <input type="date" name="due_start" class="form-control form-control-sm" value="{{ selected.due_start }}">
+            </div>
+
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted">Due Date (To)</label>
+              <input type="date" name="due_end" class="form-control form-control-sm" value="{{ selected.due_end }}">
+            </div>
+
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted">Start Date</label>
+              <input type="date" name="start_date" class="form-control form-control-sm" value="{{ selected.start_date }}">
+            </div>
+
+            <div class="col-12 col-md-3">
+              <label class="form-label small text-muted">End Date</label>
+              <input type="date" name="end_date" class="form-control form-control-sm" value="{{ selected.end_date }}">
             </div>
 
           </div>
         </div>
 
-        <div class="col-12 col-md-3">
-          <label class="form-label small text-muted">Delivery Status</label>
-          <select name="delivery_status" class="form-select form-select-sm">
-            <option value="">All</option>
-            {% for val,label in delivery_statuses %}
-              <option value="{{ val }}" {% if selected.delivery_status == val %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label small text-muted">Start Date</label>
-          <input
-            type="date"
-            name="start_date"
-            class="form-control form-control-sm"
-            value="{{ selected.start_date }}"
-          >
-        </div>
-
-        <div class="col-12 col-md-3">
-          <label class="form-label small text-muted">End Date</label>
-          <input
-            type="date"
-            name="end_date"
-            class="form-control form-control-sm"
-            value="{{ selected.end_date }}"
-          >
-        </div>
-        <div class="col-12 col-md-3">
-          <label class="form-label small text-muted">Sort By</label>
-          <select name="sort_by" class="form-select form-select-sm">
-            <option value="date_desc" {% if sort_by == "date_desc" %}selected{% endif %}>
-              Date (Newest first)
-            </option>
-            <option value="date_asc" {% if sort_by == "date_asc" %}selected{% endif %}>
-              Date (Oldest first)
-            </option>
-            <option value="total_desc" {% if sort_by == "total_desc" %}selected{% endif %}>
-              Total (High → Low)
-            </option>
-            <option value="total_asc" {% if sort_by == "total_asc" %}selected{% endif %}>
-              Total (Low → High)
-            </option>
-            <option value="dr_desc" {% if sort_by == "dr_desc" %}selected{% endif %}>
-              DR Number (Descending)
-            </option>
-            <option value="dr_asc" {% if sort_by == "dr_asc" %}selected{% endif %}>
-              DR Number (Ascending)
-            </option>
-          </select>
-        </div>
-
+        <!-- ACTION ROW (UNCHANGED, but sort moved beside Export and before Actions) -->
         <div class="col-12 mt-3">
           <div class="d-flex flex-wrap align-items-center gap-3">
+
             <div class="d-flex gap-2">
-              <button type="submit" class="btn btn-sm btn-primary">
-                Apply Filters
+              <button type="submit" class="btn btn-sm btn-primary">Apply Filters</button>
+              <a href="{% url 'dr-table' %}" class="btn btn-sm btn-outline-secondary">Reset</a>
+            </div>
+            <a href="{% url 'dr-table-export' %}?{{ request.GET.urlencode }}" class="btn btn-sm btn-outline-success">
+              Export to Excel
+            </a>
+
+            <!-- SORT DROPDOWN BUTTON (BESIDE EXPORT, BEFORE ACTIONS) -->
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                Sort
               </button>
-              <a href="{% url 'dr-table' %}" class="btn btn-sm btn-outline-secondary">
-                Reset
-              </a>
+              <ul class="dropdown-menu">
+                <li><button type="button" class="dropdown-item" data-sort="date_desc">Date (Newest first)</button></li>
+                <li><button type="button" class="dropdown-item" data-sort="date_asc">Date (Oldest first)</button></li>
+                <li><button type="button" class="dropdown-item" data-sort="total_desc">Total (High → Low)</button></li>
+                <li><button type="button" class="dropdown-item" data-sort="total_asc">Total (Low → High)</button></li>
+                <li><button type="button" class="dropdown-item" data-sort="dr_desc">DR Number (Descending)</button></li>
+                <li><button type="button" class="dropdown-item" data-sort="dr_asc">DR Number (Ascending)</button></li>
+              </ul>
             </div>
 
-            <div class="form-check ms-1">
-              <div class="form-check">
-                <input class="form-check-input" type="checkbox"
-                      name="hide_archived" value="1"
-                      {% if hide_archived %}checked{% endif %}>
-                <label class="form-check-label small text-muted">Hide Archived</label>
-              </div>
-
-              <div class="form-check">
-                <input class="form-check-input" type="checkbox"
-                      name="hide_cancelled" value="1"
-                      {% if hide_cancelled %}checked{% endif %}>
-                <label class="form-check-label small text-muted">Hide Cancelled</label>
-              </div>
-              <div class="form-check">
-                <input
-                  class="form-check-input"
-                  type="checkbox"
-                  name="with_sales_invoice"
-                  id="withSalesInvoice"
-                  value="1"
-                  {% if selected.with_sales_invoice %}checked{% endif %}
-                >
-                <label class="form-check-label small text-muted">
-                  Sales Invoice Only
-                </label>
-              </div>
-
-            </div>
-              <a
-                href="{% url 'dr-table-export' %}?{{ request.GET.urlencode }}"
-                class="btn btn-sm btn-outline-success"
-              >
-                Export to Excel
-              </a>
-              <div class="dropdown">
+            <!-- Existing Actions dropdown stays -->
+             <div class="dropdown">
                 <button
                   class="btn btn-sm btn-outline-primary dropdown-toggle"
                   type="button"
@@ -308,10 +198,51 @@
                   {% endif %}
                 </ul>
               </div>
+            <!-- INLINE FILTER CHECKBOXES -->
+            <div class="d-flex align-items-center gap-3 ms-2">
+              <div class="form-check form-check-inline mb-0">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  name="hide_archived"
+                  value="1"
+                  {% if hide_archived %}checked{% endif %}
+                >
+                <label class="form-check-label small text-muted">
+                  Hide Archived
+                </label>
+              </div>
+
+              <div class="form-check form-check-inline mb-0">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  name="hide_cancelled"
+                  value="1"
+                  {% if hide_cancelled %}checked{% endif %}
+                >
+                <label class="form-check-label small text-muted">
+                  Hide Cancelled
+                </label>
+              </div>
+
+              <div class="form-check form-check-inline mb-0">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  name="with_sales_invoice"
+                  value="1"
+                  {% if selected.with_sales_invoice %}checked{% endif %}
+                >
+                <label class="form-check-label small text-muted">
+                  Sales Invoice Only
+                </label>
+              </div>
+            </div>
+
 
           </div>
         </div>
-
 
       </form>
     </div>
@@ -526,6 +457,309 @@
 {% endblock %}
 
 {% block extra_js %}
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const form = document.querySelector("form");
+  const input = document.getElementById("bk-global-search");
+  const box = document.getElementById("bk-suggestions");
+  const tagsEl = document.getElementById("bk-tags");
+  const hiddenEl = document.getElementById("bk-hidden-inputs");
+  const qHidden = document.getElementById("bk-q");
+  const sortHidden = document.getElementById("bk-sort-by");
+
+  if (!form || !input || !box || !tagsEl || !hiddenEl) return;
+
+  // ---------------------------
+  // More Filters (remember state)
+  // ---------------------------
+  const moreBtn = document.getElementById("bk-more-filters-btn");
+  const morePanel = document.getElementById("bk-more-filters-panel");
+  const LS_KEY = "dr_table_more_filters_open";
+
+function setMoreFilters(open) {
+  if (!morePanel) return;
+
+  const textEl = document.getElementById("bk-more-filters-text");
+  const iconEl = document.getElementById("bk-more-filters-icon");
+
+  if (open) {
+    morePanel.style.display = "";
+    morePanel.style.maxHeight = morePanel.scrollHeight + "px";
+    morePanel.style.opacity = "1";
+    textEl.textContent = "Less Filters";
+    iconEl.classList.add("rotated");
+  } else {
+    morePanel.style.maxHeight = "0px";
+    morePanel.style.opacity = "0";
+    textEl.textContent = "More Filters";
+    iconEl.classList.remove("rotated");
+
+    // allow animation before hiding
+    setTimeout(() => {
+      if (!localStorage.getItem(LS_KEY) || localStorage.getItem(LS_KEY) === "0") {
+        morePanel.style.display = "none";
+      }
+    }, 250);
+  }
+
+  localStorage.setItem(LS_KEY, open ? "1" : "0");
+}
+
+
+  if (moreBtn && morePanel) {
+    const initialOpen = localStorage.getItem(LS_KEY) === "1";
+    setMoreFilters(initialOpen);
+
+    moreBtn.addEventListener("click", () => {
+      const isOpen = morePanel.style.display !== "none";
+      setMoreFilters(!isOpen);
+    });
+  }
+
+  // ---------------------------
+  // Tags state (from query params)
+  // ---------------------------
+  const tags = [];
+
+  const params = new URLSearchParams(window.location.search);
+
+  function addParamTags(param, type, key) {
+    const values = params.getAll(param);
+    const labels = params.getAll(`${param}_label`);
+
+    values
+      .map(v => v.trim())
+      .filter(v => v !== "")
+      .forEach((v, i) => {
+        tags.push({
+          type,
+          key,
+          value: v,
+          label: labels[i] || v,     // fallback if missing
+          display: labels[i] || v,
+          labelParam: `${param}_label`,
+        });
+      });
+  }
+
+
+  addParamTags("agent", "agent", "Agent");
+  addParamTags("client_name", "client_name", "Client");
+  addParamTags("dr_number", "dr_number", "DR #");
+  addParamTags("payment_status", "payment_status", "Payment Status");
+  addParamTags("delivery_status", "delivery_status", "Delivery Status");
+  addParamTags("payment_method", "payment_method", "Payment Method");
+  addParamTags("delivery_method", "delivery_method", "Delivery Method");
+
+  if (qHidden && qHidden.value) {
+    tags.push({ type: "q", key: "Keyword", value: qHidden.value, label: qHidden.value });
+  }
+
+  function renderTags() {
+    tagsEl.innerHTML = "";
+    tags.forEach((t, idx) => {
+      const tag = document.createElement("span");
+      tag.className = "bk-tag";
+      tag.innerHTML = `
+        <span class="bk-tag-key">${t.key}:</span>
+        <span class="bk-tag-val"></span>
+        <button type="button" title="Remove">×</button>
+      `;
+      tag.querySelector(".bk-tag-val").textContent = t.display || t.label;
+      tag.querySelector("button").addEventListener("click", () => {
+        tags.splice(idx, 1);
+        renderTags();
+      });
+      tagsEl.appendChild(tag);
+    });
+  }
+
+  function syncHiddenInputs() {
+    hiddenEl.innerHTML = "";
+
+    // clear q hidden; re-add if present in tags
+    if (qHidden) qHidden.value = "";
+
+    tags.forEach(t => {
+      if (t.type === "q") {
+        if (qHidden) qHidden.value = t.value;
+        return;
+      }
+
+      // value param (ID)
+      const inp = document.createElement("input");
+      inp.type = "hidden";
+      inp.name = t.type;
+      inp.value = t.value;
+      hiddenEl.appendChild(inp);
+
+      // label param (human-readable)
+      if (t.labelParam && t.display) {
+        const lbl = document.createElement("input");
+        lbl.type = "hidden";
+        lbl.name = t.labelParam;
+        lbl.value = t.display;
+        hiddenEl.appendChild(lbl);
+      }
+
+    });
+  }
+
+  renderTags();
+  syncHiddenInputs();
+
+  // Ensure tags persist across ALL submits (including checkbox auto-submit)
+  form.addEventListener("submit", function () {
+    syncHiddenInputs();
+  });
+
+  // ---------------------------
+  // Suggestions (API-backed; complete across all DRs)
+  // ---------------------------
+  let lastQuery = "";
+  let debounceTimer = null;
+
+  function showBox(html) {
+    box.innerHTML = html;
+    box.style.display = html ? "block" : "none";
+  }
+
+  function escapeHtml(s) {
+    return (s || "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+
+  function addTagFromSuggestion(s) {
+    // Prevent duplicates of identical (type+value)
+    const exists = tags.some(t => t.type === s.type && t.value === s.value);
+    if (!exists) {
+      const keyMap = {
+        agent: "Agent",
+        client_name: "Client",
+        dr_number: "DR #",
+        payment_status: "Payment Status",
+        delivery_status: "Delivery Status",
+        payment_method: "Payment Method",
+        delivery_method: "Delivery Method",
+        q: "Keyword",
+      };
+      tags.push({
+        type: s.type,
+        key: keyMap[s.type] || s.badge || "Filter",
+        value: s.value,
+        label: s.label,
+        display: s.label,
+        labelParam: `${s.type}_label`,
+      });
+      renderTags();
+      syncHiddenInputs();
+    }
+
+    input.value = "";
+    showBox("");
+  }
+
+  input.addEventListener("input", function () {
+    const q = input.value.trim();
+    if (!q) {
+      showBox("");
+      return;
+    }
+
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      if (q === lastQuery) return;
+      lastQuery = q;
+
+      fetch(`/api/dr/filter-suggestions/?q=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (!data.ok) return showBox("");
+
+          const results = data.results || [];
+          if (!results.length) return showBox("");
+
+          const html = results.map(s => `
+            <button type="button"
+              class="list-group-item list-group-item-action py-1"
+              data-type="${escapeHtml(s.type)}"
+              data-value="${escapeHtml(s.value)}"
+              data-label="${escapeHtml(s.label)}"
+              data-badge="${escapeHtml(s.badge || "")}"
+            >
+              <span class="bk-suggestion-badge">${escapeHtml(s.badge || "")}</span>
+              ${escapeHtml(s.label)}
+            </button>
+          `).join("");
+
+          showBox(html);
+        })
+        .catch(() => showBox(""));
+    }, 180);
+  });
+
+  box.addEventListener("click", function (e) {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+
+    addTagFromSuggestion({
+      type: btn.dataset.type,
+      value: btn.dataset.value,
+      label: btn.dataset.label,
+      badge: btn.dataset.badge,
+    });
+  });
+
+  input.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter") return;
+
+    const active =
+      box.querySelector(".active") ||
+      box.querySelector("button");
+
+    if (active) {
+      e.preventDefault();
+
+      addTagFromSuggestion({
+        type: active.dataset.type,
+        value: active.dataset.value,
+        label: active.dataset.label,
+        badge: active.dataset.badge,
+      });
+      return;
+    }
+
+    // fallback: submit normally
+    e.preventDefault();
+    syncHiddenInputs();
+    form.submit();
+  });
+
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest("#bk-global-search") && !e.target.closest("#bk-suggestions")) {
+      showBox("");
+    }
+  });
+
+  // ---------------------------
+  // Sort dropdown button -> set hidden sort_by then wait for Apply
+  // (You requested: no separate sort select)
+  // ---------------------------
+  document.querySelectorAll("[data-sort]").forEach(btn => {
+    btn.addEventListener("click", function () {
+      if (sortHidden) sortHidden.value = this.dataset.sort;
+
+      // 🔥 immediately apply sort
+      syncHiddenInputs();
+      form.submit();
+    });
+  });
+});
+</script>
+
 <script>
 document.addEventListener("click", function(e) {
 
@@ -671,6 +905,13 @@ document.addEventListener("DOMContentLoaded", function () {
       box.style.display = "none";
       return;
     }
+    box.addEventListener("mouseover", e => {
+      const btn = e.target.closest("button");
+      if (!btn) return;
+
+      box.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
 
     box.innerHTML = matches.map(c => `
       <button
@@ -863,6 +1104,54 @@ tr.dr-row.selected {
 }
 
 </style>
+<style>
+.bk-search-wrap { position: relative; }
+.bk-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.bk-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(13,110,253,0.08);
+  border: 1px solid rgba(13,110,253,0.18);
+  font-size: 12px;
+}
+.bk-tag .bk-tag-key { font-weight: 600; color: #0d6efd; }
+.bk-tag .bk-tag-val { color: #212529; }
+.bk-tag button {
+  border: none;
+  background: transparent;
+  padding: 0;
+  line-height: 1;
+  cursor: pointer;
+  color: #6c757d;
+}
+.bk-suggestion-badge {
+  font-size: 11px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  border: 1px solid rgba(0,0,0,.1);
+  background: #f8f9fa;
+  margin-right: 8px;
+}
+
+/* More / Less filters animation */
+#bk-more-filters-panel {
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+
+.transition-icon {
+  transition: transform 0.25s ease;
+}
+
+.transition-icon.rotated {
+  transform: rotate(180deg);
+}
+
+</style>
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   document

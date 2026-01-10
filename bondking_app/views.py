@@ -1,4 +1,5 @@
 from datetime import date, timedelta, datetime
+from django.utils import timezone
 import os
 import traceback
 from urllib import request
@@ -94,6 +95,120 @@ def product_detail_api(request, pk):
     }
     return JsonResponse(data)
 
+@require_GET
+@login_required
+def dr_filter_suggestions_api(request):
+    """
+    Global DR table smart-search suggestions.
+    Returns mixed suggestion types across ALL records (no pagination limits).
+    """
+    q = (request.GET.get("q") or "").strip()
+    if not q:
+        return JsonResponse({"ok": True, "results": []})
+
+    q_lower = q.lower()
+
+    results = []
+
+    # ---- Agents (match username + full name) ----
+    agent_qs = (
+        User.objects
+        .filter(
+            Q(username__icontains=q) |
+            Q(first_name__icontains=q) |
+            Q(last_name__icontains=q)
+        )
+        .order_by("username")[:10]
+    )
+    for u in agent_qs:
+        label = u.get_full_name() or u.username
+        results.append({
+            "type": "agent",
+            "badge": "Agent",
+            "value": str(u.id),
+            "label": label,
+        })
+
+    # ---- Clients (company name ONLY; return as name, not ID) ----
+    client_qs = (
+        Client.objects
+        .filter(company_name__icontains=q)
+        .order_by("company_name")[:10]
+    )
+    for c in client_qs:
+        results.append({
+            "type": "client_name",
+            "badge": "Client",
+            "value": c.company_name,   # ✅ NAME (not id)
+            "label": c.company_name,
+        })
+
+    # ---- DR numbers (across ALL DRs) ----
+    dr_qs = (
+        DeliveryReceipt.objects
+        .filter(dr_number__icontains=q)
+        .order_by("dr_number")
+        .values_list("dr_number", flat=True)[:10]
+    )
+    for drn in dr_qs:
+        results.append({
+            "type": "dr_number",
+            "badge": "DR #",
+            "value": drn,
+            "label": drn,
+        })
+
+    # ---- Statuses (humanized) ----
+    # PaymentStatus choices
+    for val, label in PaymentStatus.choices:
+        if q_lower in label.lower() or q_lower in val.lower():
+            results.append({
+                "type": "payment_status",
+                "badge": "Payment Status",
+                "value": val,
+                "label": label,  # already humanized
+            })
+
+    # DeliveryStatus choices
+    for val, label in DeliveryStatus.choices:
+        if q_lower in label.lower() or q_lower in val.lower():
+            results.append({
+                "type": "delivery_status",
+                "badge": "Delivery Status",
+                "value": val,
+                "label": label,
+            })
+
+    # PaymentMethod choices
+    for val, label in PaymentMethod.choices:
+        if q_lower in label.lower() or q_lower in val.lower():
+            results.append({
+                "type": "payment_method",
+                "badge": "Payment Method",
+                "value": val,
+                "label": label,
+            })
+
+    # DeliveryMethod choices
+    for val, label in DeliveryMethod.choices:
+        if q_lower in label.lower() or q_lower in val.lower():
+            results.append({
+                "type": "delivery_method",
+                "badge": "Delivery Method",
+                "value": val,
+                "label": label,
+            })
+
+    # ---- Free text fallback (maps to Client OR Agent) ----
+    results.append({
+        "type": "q",
+        "badge": "Keyword",
+        "value": q,
+        "label": f'Search "{q}" (Client or Agent)',
+    })
+
+    # Keep results reasonable
+    return JsonResponse({"ok": True, "results": results[:25]})
 
 # =========================
 #  CLIENT CREATE
@@ -868,6 +983,14 @@ def d2d_transactions_api(request, pk):
         "can_archive": can_archive,
         "is_top_management": request.user.is_superuser,
     })
+def clean_int_list(values):
+    out = []
+    for v in values:
+        if v in (None, "", "None", "null", "undefined"):
+            continue
+        if str(v).isdigit():
+            out.append(int(v))
+    return out
 
 def clean_int(val):
     """
@@ -886,6 +1009,26 @@ def clean_param(val):
     if val in (None, "", "None", "null", "undefined"):
         return None
     return val
+
+def excel_safe_datetime(value):
+    """
+    Ensures Excel-friendly datetime/date output.
+    - Converts aware datetimes to naive (localtime)
+    - Leaves strings/numbers untouched
+    """
+    if value is None:
+        return ""
+
+    if isinstance(value, datetime):
+        if timezone.is_aware(value):
+            value = timezone.localtime(value)
+        return value.replace(tzinfo=None)
+
+    if isinstance(value, date):
+        return value
+
+    return value
+
 @login_required
 def dr_table(request):
     qs = (
@@ -906,22 +1049,27 @@ def dr_table(request):
         return val
 
 
+    # ---- Smart search tags (multi) ----
+    agent_ids = clean_int_list(request.GET.getlist("agent"))
+    client_names = [c.strip() for c in request.GET.getlist("client_name") if c.strip()]  # ✅ name-based only
+    dr_numbers = [d.strip() for d in request.GET.getlist("dr_number") if d.strip()]
 
+    payment_methods = [p for p in request.GET.getlist("payment_method") if p]
+    payment_statuses = [p for p in request.GET.getlist("payment_status") if p]
+    delivery_statuses = [d for d in request.GET.getlist("delivery_status") if d]
+    delivery_methods = [d for d in request.GET.getlist("delivery_method") if d]
+    
+    # ---- Free-text keyword (client OR agent) ----
+    q = (request.GET.get("q") or "").strip()
     # -------------------
     # Filters
     # -------------------
-    client_id = clean_int(request.GET.get("client"))
-    agent_id = clean_int(request.GET.get("agent"))
-    payment_method = request.GET.get("payment_method", "")
-    payment_status = request.GET.get("payment_status", "")
-    delivery_status = request.GET.get("delivery_status", "")
+
     start_date = request.GET.get("start_date", "")
     end_date = request.GET.get("end_date", "")
     sort_by = request.GET.get("sort_by", "dr_asc")
-    dr_number = request.GET.get("dr_number", "")
     due_start = request.GET.get("due_start", "")
     due_end = request.GET.get("due_end", "")
-    delivery_method = request.GET.get("delivery_method", "")
     hide_archived = request.GET.get("hide_archived") == "1"
     hide_cancelled = request.GET.get("hide_cancelled") == "1"
     with_sales_invoice = request.GET.get("with_sales_invoice") == "1"
@@ -941,8 +1089,13 @@ def dr_table(request):
             sales_invoice_no__exact=""
         )
 
-    if dr_number:
-        qs = qs.filter(dr_number__icontains=dr_number)
+    # --- DR numbers (multi) ---
+    if dr_numbers:
+        q_obj = Q()
+        for drn in dr_numbers:
+            q_obj |= Q(dr_number__icontains=drn)
+        qs = qs.filter(q_obj)
+
 
     if due_start:
         qs = qs.filter(payment_due__gte=due_start)
@@ -950,39 +1103,50 @@ def dr_table(request):
     if due_end:
         qs = qs.filter(payment_due__lte=due_end)
 
-    if delivery_method:
-        qs = qs.filter(delivery_method=delivery_method)
+    # --- Delivery method (multi) ---
+    if delivery_methods:
+        qs = qs.filter(delivery_method__in=delivery_methods)
 
-    if agent_id is not None:
-        qs = qs.filter(agent_id=agent_id)
+    # --- Agent (multi) ---
+    if agent_ids:
+        qs = qs.filter(agent_id__in=agent_ids)
 
-    if client_id is not None:
-        qs = qs.filter(client_id=client_id)
+    # --- Client name (multi, NAME-BASED ONLY) ---
+    if client_names:
+        q_obj = Q()
+        for cname in client_names:
+            q_obj |= Q(client__company_name__icontains=cname)
+        qs = qs.filter(q_obj)
 
-    if payment_method:
-        qs = qs.filter(payment_method=payment_method)
+    # --- Payment/Delivery filters (multi) ---
+    if payment_methods:
+        qs = qs.filter(payment_method__in=payment_methods)
 
-    if payment_status:
-        qs = qs.filter(payment_status=payment_status)
+    if payment_statuses:
+        qs = qs.filter(payment_status__in=payment_statuses)
 
-    if delivery_status:
-        qs = qs.filter(delivery_status=delivery_status)
+    if delivery_statuses:
+        qs = qs.filter(delivery_status__in=delivery_statuses)
 
     if start_date:
         qs = qs.filter(date_of_order__gte=start_date)
 
     if end_date:
         qs = qs.filter(date_of_order__lte=end_date)
-    client_name = request.GET.get("client_name")
 
     client = clean_param(request.GET.get("client"))
 
     if client and client.isdigit():
         qs = qs.filter(client_id=int(client))
 
-    elif client_name:
-        qs = qs.filter(client__company_name__icontains=client_name)
-
+    # --- Free-text keyword maps to Client OR Agent ---
+    if q:
+        qs = qs.filter(
+            Q(client__company_name__icontains=q) |
+            Q(agent__username__icontains=q) |
+            Q(agent__first_name__icontains=q) |
+            Q(agent__last_name__icontains=q)
+        )
     SORT_OPTIONS = {
         "date_desc": "-date_of_order",
         "date_asc": "date_of_order",
@@ -1001,14 +1165,13 @@ def dr_table(request):
             client_display = Client.objects.get(pk=int(client)).company_name
         except Client.DoesNotExist:
             client_display = ""
-    elif client_name:
-        client_display = client_name
 
     # -------------------
     # Pagination (LAST)
     # -------------------
     paginator = Paginator(qs, 100)
     page_obj = paginator.get_page(request.GET.get("page", 1))
+    client_display = ", ".join(client_names) if client_names else q
 
     context = {
         "page_obj": page_obj,
@@ -1023,23 +1186,22 @@ def dr_table(request):
         "is_top_management": is_top_management(request.user),
         "delivery_methods": DeliveryMethod.choices,
         "client": client,
-        "client_name": client_name,
+        "client_name": client_names,
         "client_display": client_display,
         "selected": {
-            "client": client_id,
-            "client_name": client_name,   # ✅ ADD THIS
-            "agent": agent_id,
-            "payment_method": payment_method,
-            "payment_status": payment_status,
-            "delivery_status": delivery_status,
+            "agent": agent_ids,
+            "client_name": client_names,
+            "dr_number": dr_numbers,
+            "payment_method": payment_methods,
+            "payment_status": payment_statuses,
+            "delivery_status": delivery_statuses,
+            "delivery_method": delivery_methods,
             "start_date": start_date,
             "end_date": end_date,
-            "with_sales_invoice": with_sales_invoice,
-            "dr_number": dr_number,
             "due_start": due_start,
             "due_end": due_end,
-            "delivery_method": delivery_method,
-            "dr_number": dr_number,
+            "with_sales_invoice": with_sales_invoice,
+            "q": q,
         },
     }
 
@@ -1408,7 +1570,6 @@ def archive_po(request, pk):
     po.save(update_fields=["is_archived", "status", "updated_at"])
     po.log_update(request.user, "Archived PO.")
 
-    po.log_update(request.user, "Archived PO.")
     latest = po.updates.first()
     return JsonResponse({
         "ok": True,
@@ -1422,67 +1583,92 @@ def dr_table_export(request):
     qs = DeliveryReceipt.objects.select_related(
         "client", "agent", "created_by", "source_dr"
     )
-    
-    def excel_safe_datetime(value):
-        if isinstance(value, datetime):
-            return value.replace(tzinfo=None)
-        return value
+    # -------------------
+    # SAME FILTERS AS dr_table (SMART, MULTI)
+    # -------------------
 
-    # APPLY SAME FILTERS AS dr_table (COPY EXACTLY)
-    if request.GET.get("agent", "").isdigit():
-        qs = qs.filter(agent_id=int(request.GET["agent"]))
+    agent_ids = clean_int_list(request.GET.getlist("agent"))
+    client_names = [c.strip() for c in request.GET.getlist("client_name") if c.strip()]
+    dr_numbers = [d.strip() for d in request.GET.getlist("dr_number") if d.strip()]
 
-    if request.GET.get("payment_method"):
-        qs = qs.filter(payment_method=request.GET["payment_method"])
+    payment_methods = [p for p in request.GET.getlist("payment_method") if p]
+    payment_statuses = [p for p in request.GET.getlist("payment_status") if p]
+    delivery_statuses = [d for d in request.GET.getlist("delivery_status") if d]
+    delivery_methods = [d for d in request.GET.getlist("delivery_method") if d]
 
-    if request.GET.get("payment_status"):
-        qs = qs.filter(payment_status=request.GET["payment_status"])
-
-    if request.GET.get("delivery_status"):
-        qs = qs.filter(delivery_status=request.GET["delivery_status"])
-
-    if request.GET.get("start_date"):
-        qs = qs.filter(date_of_order__gte=request.GET["start_date"])
-
-    if request.GET.get("end_date"):
-        qs = qs.filter(date_of_order__lte=request.GET["end_date"])
+    q = (request.GET.get("q") or "").strip()
 
     hide_archived = request.GET.get("hide_archived") == "1"
     hide_cancelled = request.GET.get("hide_cancelled") == "1"
-
     with_sales_invoice = request.GET.get("with_sales_invoice") == "1"
-    if with_sales_invoice:
-        qs = qs.exclude(
-            sales_invoice_no__isnull=True
-        ).exclude(
-            sales_invoice_no__exact=""
-        )
 
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
+    due_start = request.GET.get("due_start")
+    due_end = request.GET.get("due_end")
+
+    # ---- Visibility flags ----
     if hide_archived:
         qs = qs.filter(is_archived=False)
 
     if hide_cancelled:
         qs = qs.filter(is_cancelled=False)
 
-    client = clean_param(request.GET.get("client"))
-    client_name = request.GET.get("client_name")
+    if with_sales_invoice:
+        qs = qs.exclude(sales_invoice_no__isnull=True).exclude(sales_invoice_no="")
 
-    if client and client.isdigit():
-        qs = qs.filter(client_id=int(client))
-    elif client_name:
-        qs = qs.filter(client__company_name__icontains=client_name)
+    # ---- Agent (multi) ----
+    if agent_ids:
+        qs = qs.filter(agent_id__in=agent_ids)
 
-    if request.GET.get("dr_number"):
-        qs = qs.filter(dr_number__icontains=request.GET["dr_number"])
+    # ---- Client name (multi, NAME-BASED ONLY) ----
+    if client_names:
+        q_obj = Q()
+        for cname in client_names:
+            q_obj |= Q(client__company_name__icontains=cname)
+        qs = qs.filter(q_obj)
 
-    if request.GET.get("due_start"):
-        qs = qs.filter(payment_due__gte=request.GET["due_start"])
+    # ---- DR numbers (multi) ----
+    if dr_numbers:
+        q_obj = Q()
+        for drn in dr_numbers:
+            q_obj |= Q(dr_number__icontains=drn)
+        qs = qs.filter(q_obj)
 
-    if request.GET.get("due_end"):
-        qs = qs.filter(payment_due__lte=request.GET["due_end"])
+    # ---- Payment / Delivery filters (multi) ----
+    if payment_methods:
+        qs = qs.filter(payment_method__in=payment_methods)
 
-    if request.GET.get("delivery_method"):
-        qs = qs.filter(delivery_method=request.GET["delivery_method"])
+    if payment_statuses:
+        qs = qs.filter(payment_status__in=payment_statuses)
+
+    if delivery_statuses:
+        qs = qs.filter(delivery_status__in=delivery_statuses)
+
+    if delivery_methods:
+        qs = qs.filter(delivery_method__in=delivery_methods)
+
+    # ---- Date filters ----
+    if start_date:
+        qs = qs.filter(date_of_order__gte=start_date)
+
+    if end_date:
+        qs = qs.filter(date_of_order__lte=end_date)
+
+    if due_start:
+        qs = qs.filter(payment_due__gte=due_start)
+
+    if due_end:
+        qs = qs.filter(payment_due__lte=due_end)
+
+    # ---- Free-text keyword (client OR agent) ----
+    if q:
+        qs = qs.filter(
+            Q(client__company_name__icontains=q) |
+            Q(agent__username__icontains=q) |
+            Q(agent__first_name__icontains=q) |
+            Q(agent__last_name__icontains=q)
+        )
 
     SORT_OPTIONS = {
         "date_desc": "-date_of_order",

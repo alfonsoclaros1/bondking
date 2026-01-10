@@ -23,6 +23,7 @@ urlpatterns = [
     path("dr/<int:pk>/", views.dr_detail, name="dr-detail"),
     path("kanban/", views.dr_kanban, name="dr-kanban"),
     path("dr/<int:pk>/print/", views.dr_print, name="dr-print"),
+    path("api/dr/filter-suggestions/", views.dr_filter_suggestions_api, name="dr-filter-suggestions"),
 
 
     # Client quick add
