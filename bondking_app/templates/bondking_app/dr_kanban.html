@@ -582,8 +582,11 @@ document.getElementById("declineModal")
       ).hide();
 
       recomputeCountsAndEmpty();
+      if (data.system_message) {
+        window.bkToast(data.system_message, "success");
+      }
     })
-    .catch(err => alert(err.message));
+    .catch(err => window.bkToast(err.message, "danger"));
   });
 })();
 </script>
@@ -730,9 +733,9 @@ document.getElementById("declineModal")
           })
             .then(response => {
               if (!response.ok) {
-                return response.json().then(data => {
-                  throw new Error(data.error || 'Error moving DR.');
-                });
+                return response.json()
+                  .then(data => { throw new Error(data.error || "Error moving DR."); })
+                  .catch(() => { throw new Error("Error moving DR."); });
               }
               return response.json();
             })
@@ -750,10 +753,11 @@ document.getElementById("declineModal")
               refreshCardAppearance(card, approvalStatus);
 
               recomputeCountsAndEmpty();
+              if (data.system_message) {
+                window.bkToast(data.system_message, "success");
+              }
             })
-            .catch(err => {
-              alert(err.message);
-            });
+            .catch(err => window.bkToast(err.message, "danger"));
         });
       });
     }
@@ -818,10 +822,11 @@ document.getElementById("declineModal")
         if (btnRow) btnRow.remove();
 
         recomputeCountsAndEmpty();
+        if (data.system_message) {
+          window.bkToast(data.system_message, "success");
+        }
       })
-      .catch(err => {
-        alert(err.message);
-      });
+      .catch(err => window.bkToast(err.message, "danger"));
     }
 
     function initArchiveButtons() {
@@ -867,10 +872,11 @@ document.getElementById("declineModal")
           // Remove card from DOM
           card.remove();
           recomputeCountsAndEmpty();
+          if (data.system_message) {
+            window.bkToast(data.system_message, "success");
+          }
         })
-        .catch(err => {
-          alert(err.message);
-        });
+        .catch(err => window.bkToast(err.message, "danger"));
       });
     }
     window.refreshCardAppearance = function (card, approvalStatus) {
@@ -1215,27 +1221,4 @@ document.addEventListener("click", function (e) {
 
 })();
 </script>
-
-<script>
-function showToast(message, level = "success") {
-  const container = document.getElementById("toast-container");
-  if (!container) return;
-
-  const toastEl = document.createElement("div");
-  toastEl.className = `toast align-items-center text-bg-${level} border-0`;
-  toastEl.role = "alert";
-  toastEl.innerHTML = `
-    <div class="d-flex">
-      <div class="toast-body">${message}</div>
-      <button type="button"
-              class="btn-close btn-close-white me-2 m-auto"
-              data-bs-dismiss="toast"></button>
-    </div>
-  `;
-
-  container.appendChild(toastEl);
-  new bootstrap.Toast(toastEl, { delay: 3500 }).show();
-}
-</script>
-
 {% endblock %}

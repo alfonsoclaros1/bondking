@@ -654,7 +654,8 @@ def move_dr(request, pk):
         col = d.get_current_column()
         counts[col] = counts.get(col, 0) + 1
 
-    
+    latest = dr.updates.first()
+    system_message = latest.system_update if latest else ""
 
     return JsonResponse(
         {
@@ -666,6 +667,7 @@ def move_dr(request, pk):
             "payment_status_display": dr.get_payment_status_display(),
             "payment_method_display": dr.get_payment_method_display(),
             "counts": counts,
+            "system_message": system_message,  # ✅ ADD
         }
     )
 
@@ -707,10 +709,12 @@ def dr_approve(request, pk):
         # ✅ PREVENT HTML ERROR PAGE
         traceback.print_exc()
         return JsonResponse({"ok": False, "error": str(e)}, status=500)
+    latest = dr.updates.first()
 
     return JsonResponse({
         "ok": True,
         "approval_status": dr.approval_status,
+        "system_message": latest.system_update if latest else "",  # ✅ ADD
     })
 
 
@@ -762,6 +766,7 @@ def dr_decline(request, pk):
             )
     except (ValidationError, PermissionDenied) as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=400)
+    latest = dr.updates.first()
 
     # Return final state to JS
     return JsonResponse(
@@ -769,6 +774,7 @@ def dr_decline(request, pk):
             "ok": True,
             "approval_status": dr.approval_status,
             "column": dr.get_current_column(),
+            "system_message": latest.system_update if latest else "",  # ✅ ADD
         }
     )
 
@@ -790,8 +796,9 @@ def archive_dr(request, dr_id):
     dr.is_archived = True
     dr.save(update_fields=["is_archived", "updated_at"])
     dr.log_update(request.user, "Archived DR.")
+    latest = dr.updates.first()
+    return JsonResponse({"ok": True, "system_message": latest.system_update if latest else ""})
 
-    return JsonResponse({"ok": True})
 
 
 @require_GET
@@ -1356,8 +1363,11 @@ def po_approve(request, pk):
 
     except (ValidationError, PermissionDenied) as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=400)
-
-    return JsonResponse({"ok": True})
+    latest = po.updates.first()
+    return JsonResponse({
+        "ok": True,
+        "system_message": latest.system_update if latest else "",
+    })
 
 
 def is_attention_required(self):
@@ -1374,11 +1384,12 @@ def po_decline(request, pk):
         po.decline_current_step(request.user, user_notes=notes, simulated_role=sim_role)
     except (ValidationError, PermissionDenied) as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=400)
-
+    latest = po.updates.first()
     return JsonResponse({
         "ok": True,
         "approval_status": po.approval_status,
         "column": po.get_current_column(),
+        "system_message": latest.system_update if latest else "",
     })
 
 
@@ -1397,7 +1408,13 @@ def archive_po(request, pk):
     po.save(update_fields=["is_archived", "status", "updated_at"])
     po.log_update(request.user, "Archived PO.")
 
-    return JsonResponse({"ok": True})
+    po.log_update(request.user, "Archived PO.")
+    latest = po.updates.first()
+    return JsonResponse({
+        "ok": True,
+        "system_message": latest.system_update if latest else "",
+    })
+
 
 
 @login_required
@@ -2327,9 +2344,6 @@ def po_print(request, pk):
         {
             "po": po,
             "items": items,
-            "logo_url": request.build_absolute_uri(
-                settings.STATIC_URL + "img/bondking-logo-bw.jpg"
-            ),
         },
         request=request,
     )

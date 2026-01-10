@@ -157,6 +157,38 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 </script>
 
+<script>
+  // Global toast helper (safe for AJAX + page messages)
+  window.bkToast = function (message, level = "success") {
+    const container = document.getElementById("toast-container");
+    if (!container || !message) return;
+
+    const toastEl = document.createElement("div");
+    toastEl.className = `toast align-items-center text-bg-${level} border-0`;
+    toastEl.role = "alert";
+
+    // Create DOM nodes (XSS-safe). Do NOT use innerHTML with message content.
+    const wrap = document.createElement("div");
+    wrap.className = "d-flex";
+
+    const body = document.createElement("div");
+    body.className = "toast-body";
+    body.textContent = message; // ✅ XSS-safe
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn-close btn-close-white me-2 m-auto";
+    btn.setAttribute("data-bs-dismiss", "toast");
+
+    wrap.appendChild(body);
+    wrap.appendChild(btn);
+    toastEl.appendChild(wrap);
+
+    container.appendChild(toastEl);
+    const toast = new bootstrap.Toast(toastEl, { delay: 3500 });
+    toast.show();
+  };
+</script>
 
 
 </html>

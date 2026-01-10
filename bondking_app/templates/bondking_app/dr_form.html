@@ -1274,13 +1274,19 @@ document.addEventListener("DOMContentLoaded", function () {
         throw new Error(data.error || "Reject failed.");
       }
 
-      // ✅ EXACT behavior match with Kanban:
-      // After reject → go back to Kanban
-      window.location.reload();
+      if (data.system_message) {
+        window.bkToast(data.system_message, "success");
+      }
+
+      // small delay so toast is visible
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
     })
     .catch(err => {
-      alert(err.message);
+      window.bkToast(err.message, "danger");
     });
+
   });
 });
 </script>

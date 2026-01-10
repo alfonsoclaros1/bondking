@@ -578,7 +578,7 @@ class DeliveryReceipt(models.Model):
         """
         Central logging helper, used by all state-changing operations.
         """
-        DeliveryReceiptUpdate.objects.create(
+        return DeliveryReceiptUpdate.objects.create(
             delivery_receipt=self,
             user=user,
             system_update=message,
@@ -1376,7 +1376,7 @@ class PurchaseOrder(models.Model):
         return self.status
 
     def log_update(self, user, message: str, user_notes: str = ""):
-        PurchaseOrderUpdate.objects.create(
+        return PurchaseOrderUpdate.objects.create(
             purchase_order=self,
             user=user,
             system_update=message,
