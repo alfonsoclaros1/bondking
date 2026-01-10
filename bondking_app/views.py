@@ -1750,6 +1750,133 @@ def po_complete(request, pk):
     po.submit_to_next(request.user)
     return redirect("po-edit", pk=pk)
 
+@require_GET
+@login_required
+def po_filter_suggestions_api(request):
+    """
+    Global PO table smart-search suggestions (complete across ALL POs).
+    """
+    q = (request.GET.get("q") or "").strip()
+    if not q:
+        return JsonResponse({"ok": True, "results": []})
+
+    q_lower = q.lower()
+    results = []
+
+    # ---- Prepared By (users) ----
+    users_qs = (
+        User.objects
+        .filter(
+            Q(username__icontains=q) |
+            Q(first_name__icontains=q) |
+            Q(last_name__icontains=q)
+        )
+        .order_by("username")[:10]
+    )
+    for u in users_qs:
+        label = u.get_full_name() or u.username
+        results.append({
+            "type": "prepared_by",
+            "badge": "Prepared By",
+            "value": str(u.id),
+            "label": label,
+        })
+
+    # ---- Product ID ----
+    pid_qs = (
+        ProductID.objects
+        .filter(Q(code__icontains=q) | Q(description__icontains=q))
+        .order_by("code")[:10]
+    )
+    for p in pid_qs:
+        results.append({
+            "type": "product_id",
+            "badge": "Product ID",
+            "value": str(p.id),
+            "label": p.code,
+        })
+
+    # ---- Paid To (distinct values across all POs) ----
+    paid_to_qs = (
+        PurchaseOrder.objects
+        .exclude(paid_to__isnull=True)
+        .exclude(paid_to__exact="")
+        .filter(paid_to__icontains=q)
+        .values_list("paid_to", flat=True)
+        .distinct()
+        .order_by("paid_to")[:10]
+    )
+    for p in paid_to_qs:
+        results.append({
+            "type": "paid_to",
+            "badge": "Paid To",
+            "value": p,
+            "label": p,
+        })
+
+    # ---- PO / RFP numbers ----
+    po_nums = (
+        PurchaseOrder.objects
+        .exclude(po_number__isnull=True)
+        .exclude(po_number__exact="")
+        .filter(po_number__icontains=q)
+        .values_list("po_number", flat=True)
+        .distinct()
+        .order_by("po_number")[:10]
+    )
+    for n in po_nums:
+        results.append({
+            "type": "po_number",
+            "badge": "PO #",
+            "value": n,
+            "label": n,
+        })
+
+    rfp_nums = (
+        PurchaseOrder.objects
+        .exclude(rfp_number__isnull=True)
+        .exclude(rfp_number__exact="")
+        .filter(rfp_number__icontains=q)
+        .values_list("rfp_number", flat=True)
+        .distinct()
+        .order_by("rfp_number")[:10]
+    )
+    for n in rfp_nums:
+        results.append({
+            "type": "rfp_number",
+            "badge": "RFP #",
+            "value": n,
+            "label": n,
+        })
+
+    # ---- Statuses (humanized) ----
+    for val, label in POStatus.choices:
+        if q_lower in val.lower() or q_lower in label.lower():
+            results.append({
+                "type": "status",
+                "badge": "Status",
+                "value": val,
+                "label": label,
+            })
+
+    for val, label in POApprovalStatus.choices:
+        if q_lower in val.lower() or q_lower in label.lower():
+            results.append({
+                "type": "approval_status",
+                "badge": "Approval",
+                "value": val,
+                "label": label,
+            })
+
+    # ---- Free text fallback ----
+    results.append({
+        "type": "q",
+        "badge": "Keyword",
+        "value": q,
+        "label": f'Search "{q}" (Paid To or Prepared By)',
+    })
+
+    return JsonResponse({"ok": True, "results": results[:25]})
 
 @login_required
 def po_table(request):
@@ -1758,20 +1885,73 @@ def po_table(request):
         .select_related("prepared_by")
     )
 
+
+
     # -------------------
-    # Show All logic
-    # Default = archived only
+    # Filters
     # -------------------
+    start_date = request.GET.get("start_date", "")
+    end_date = request.GET.get("end_date", "")
+    paid_to_list = [x.strip() for x in request.GET.getlist("paid_to") if x.strip()]
+    prepared_by_ids = clean_int_list(request.GET.getlist("prepared_by"))
+    status_list = [x for x in request.GET.getlist("status") if x]
+    approval_status_list = [x for x in request.GET.getlist("approval_status") if x]
+    product_id_ids = clean_int_list(request.GET.getlist("product_id"))
+
+    q = (request.GET.get("q") or "").strip()
+
+    start_date = request.GET.get("start_date", "")
+    end_date = request.GET.get("end_date", "")
+    sort_by = request.GET.get("sort_by", "po_asc")
 
     hide_archived = request.GET.get("hide_archived") == "1"
     hide_cancelled = request.GET.get("hide_cancelled") == "1"
 
 
+    # Paid To (multi icontains OR)
+    if paid_to_list:
+        q_obj = Q()
+        for p in paid_to_list:
+            q_obj |= Q(paid_to__icontains=p)
+        qs = qs.filter(q_obj)
 
-    # -------------------------------------------------
-    # Archived / Cancelled visibility logic
-    # -------------------------------------------------
+    # Prepared By (multi)
+    if prepared_by_ids:
+        qs = qs.filter(prepared_by_id__in=prepared_by_ids)
 
+    # Product ID (multi)
+    if product_id_ids:
+        qs = qs.filter(product_id_ref_id__in=product_id_ids)
+
+    # Status (multi)
+    if status_list:
+        qs = qs.filter(status__in=status_list)
+
+    # Approval Status (multi)
+    if approval_status_list:
+        qs = qs.filter(approval_status__in=approval_status_list)
+
+    # Date range
+    if start_date:
+        qs = qs.filter(date__gte=start_date)
+    if end_date:
+        qs = qs.filter(date__lte=end_date)
+
+    # Free text keyword (Paid To OR Prepared By)
+    if q:
+        qs = qs.filter(
+            Q(paid_to__icontains=q) |
+            Q(prepared_by__username__icontains=q) |
+            Q(prepared_by__first_name__icontains=q) |
+            Q(prepared_by__last_name__icontains=q)
+        )
+
+
+    if start_date:
+        qs = qs.filter(date__gte=start_date)
+
+    if end_date:
+        qs = qs.filter(date__lte=end_date)
     if hide_archived and hide_cancelled:
         # SHOW ALL: active + archived + cancelled
         pass
@@ -1797,38 +1977,6 @@ def po_table(request):
             is_cancelled=False
         )
 
-    # -------------------
-    # Filters
-    # -------------------
-    paid_to = request.GET.get("paid_to", "")
-    prepared_by = request.GET.get("prepared_by", "")
-    status = request.GET.get("status", "")
-    approval_status = request.GET.get("approval_status", "")
-    product_id = request.GET.get("product_id", "")
-    start_date = request.GET.get("start_date", "")
-    end_date = request.GET.get("end_date", "")
-    sort_by = request.GET.get("sort_by", "po_asc")
-
-    if paid_to:
-        qs = qs.filter(paid_to__icontains=paid_to)
-
-    if prepared_by.isdigit():
-        qs = qs.filter(prepared_by_id=int(prepared_by))
-    if product_id.isdigit():
-        qs = qs.filter(product_id_ref_id=int(product_id))
-
-    if status:
-        qs = qs.filter(status=status)
-
-    if approval_status:
-        qs = qs.filter(approval_status=approval_status)
-
-    if start_date:
-        qs = qs.filter(date__gte=start_date)
-
-    if end_date:
-        qs = qs.filter(date__lte=end_date)
-
     SORT_OPTIONS = {
         "date_desc": "-date",
         "date_asc": "date",
@@ -1838,6 +1986,10 @@ def po_table(request):
         "po_asc": "po_number",
     }
     qs = qs.order_by(SORT_OPTIONS.get(sort_by, "-date"))
+    # -------------------------------------------------
+    # Archived / Cancelled visibility logic
+    # -------------------------------------------------
+
 
     # -------------------
     # Pagination (LAST)
@@ -1852,6 +2004,7 @@ def po_table(request):
         .distinct()
         .order_by("paid_to")
     )
+    total_sum = qs.aggregate(total=Sum("total"))["total"] or 0
 
     return render(request, "bondking_app/po_table.html", {
         "page_obj": page_obj,
@@ -1865,68 +2018,105 @@ def po_table(request):
         "hide_cancelled": hide_cancelled,
         "sort_by": sort_by,
         "selected": {
-            "paid_to": paid_to,
-            "prepared_by": prepared_by,
-            "status": status,
-            "approval_status": approval_status,
+            "paid_to": paid_to_list,
+            "prepared_by": prepared_by_ids,
+            "status": status_list,
+            "approval_status": approval_status_list,
+            "product_id": product_id_ids,
             "start_date": start_date,
             "end_date": end_date,
-            "product_id": product_id,  # ✅ ADD THIS
+            "q": q,
         },
+        "total_sum": total_sum,
         "paid_to_values": paid_to_values,
         "is_top_management": is_top_management(request.user),
         "product_ids": ProductID.objects.filter(is_active=True).order_by("code"),
         "statuses": [s for s, _ in POStatus.choices],
-        "product_id": product_id,
-
+        "product_id": product_id_ids,
     })
 
 
 @login_required
 def po_table_export(request):
+    from datetime import datetime
+    from django.db.models import Q, Sum
+    import openpyxl
+    from django.http import HttpResponse
+
     qs = PurchaseOrder.objects.select_related("prepared_by")
 
-    from datetime import datetime
-
+    # -------------------
+    # Excel-safe datetime
+    # -------------------
     def excel_safe_datetime(value):
         if isinstance(value, datetime):
             return value.replace(tzinfo=None)
         return value
 
     # -------------------
-    # SAME FILTERS AS po_table
+    # READ FILTERS (MULTI)
     # -------------------
-    if request.GET.get("paid_to"):
-        qs = qs.filter(paid_to__icontains=request.GET["paid_to"])
+    paid_to_list = [v.strip() for v in request.GET.getlist("paid_to") if v.strip()]
+    prepared_by_ids = [
+        int(v) for v in request.GET.getlist("prepared_by") if v.isdigit()
+    ]
+    status_list = [v for v in request.GET.getlist("status") if v]
+    approval_status_list = [v for v in request.GET.getlist("approval_status") if v]
+    product_id_ids = [
+        int(v) for v in request.GET.getlist("product_id") if v.isdigit()
+    ]
 
-    if request.GET.get("prepared_by", "").isdigit():
-        qs = qs.filter(prepared_by_id=int(request.GET["prepared_by"]))
+    q = (request.GET.get("q") or "").strip()
 
-    if request.GET.get("status"):
-        qs = qs.filter(status=request.GET["status"])
+    start_date = request.GET.get("start_date")
+    end_date = request.GET.get("end_date")
 
-    if request.GET.get("approval_status"):
-        qs = qs.filter(approval_status=request.GET["approval_status"])
+    sort_by = request.GET.get("sort_by", "po_asc")
 
-    if request.GET.get("start_date"):
-        qs = qs.filter(date__gte=request.GET["start_date"])
-
-    if request.GET.get("end_date"):
-        qs = qs.filter(date__lte=request.GET["end_date"])
-        
-    product_id = request.GET.get("product_id", "")
-
-    if product_id and product_id.isdigit():
-        qs = qs.filter(product_id_ref_id=int(product_id))
-
-    # Show All logic (default = archived only)
     hide_archived = request.GET.get("hide_archived") == "1"
     hide_cancelled = request.GET.get("hide_cancelled") == "1"
 
+    # -------------------
+    # APPLY FILTERS
+    # -------------------
 
-    # -------------------------------------------------
-    # Archived / Cancelled visibility logic
-    # -------------------------------------------------
+    # Paid To (OR across tags)
+    if paid_to_list:
+        q_obj = Q()
+        for p in paid_to_list:
+            q_obj |= Q(paid_to__icontains=p)
+        qs = qs.filter(q_obj)
+
+    # Prepared By
+    if prepared_by_ids:
+        qs = qs.filter(prepared_by_id__in=prepared_by_ids)
+
+    # Product ID
+    if product_id_ids:
+        qs = qs.filter(product_id_ref_id__in=product_id_ids)
+
+    # Status
+    if status_list:
+        qs = qs.filter(status__in=status_list)
+
+    # Approval Status
+    if approval_status_list:
+        qs = qs.filter(approval_status__in=approval_status_list)
+
+    # Date range
+    if start_date:
+        qs = qs.filter(date__gte=start_date)
+    if end_date:
+        qs = qs.filter(date__lte=end_date)
+
+    # Free text keyword
+    if q:
+        qs = qs.filter(
+            Q(paid_to__icontains=q) |
+            Q(prepared_by__username__icontains=q) |
+            Q(prepared_by__first_name__icontains=q) |
+            Q(prepared_by__last_name__icontains=q)
+        )
 
     if hide_archived and hide_cancelled:
         # SHOW ALL: active + archived + cancelled
@@ -1954,9 +2144,21 @@ def po_table_export(request):
         )
 
 
+    # -------------------
+    # SORT (MATCH po_table)
+    # -------------------
+    SORT_MAP = {
+        "date_desc": "-date",
+        "date_asc": "date",
+        "total_desc": "-total",
+        "total_asc": "total",
+        "po_desc": "-po_number",
+        "po_asc": "po_number",
+    }
+    qs = qs.order_by(SORT_MAP.get(sort_by, "po_number"))
 
     # -------------------
-    # EXCEL
+    # EXCEL OUTPUT
     # -------------------
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -1975,6 +2177,7 @@ def po_table_export(request):
         "Created At",
         "Updated At",
         "Archived",
+        "Cancelled",
     ]
     ws.append(headers)
 
@@ -1992,6 +2195,7 @@ def po_table_export(request):
             excel_safe_datetime(po.created_at),
             excel_safe_datetime(po.updated_at),
             "Yes" if po.is_archived else "No",
+            "Yes" if po.is_cancelled else "No",
         ])
 
     response = HttpResponse(
@@ -1999,6 +2203,7 @@ def po_table_export(request):
     )
     response["Content-Disposition"] = "attachment; filename=purchase_orders.xlsx"
     wb.save(response)
+
     return response
 
 

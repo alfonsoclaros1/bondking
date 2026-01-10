@@ -61,6 +61,7 @@ urlpatterns = [
     path("po/<int:pk>/cancel/", views.cancel_po, name="po-cancel"),
     path("product-ids/quick-create/",views.product_id_quick_create,name="product-id-quick-create",),
     path("po/<int:pk>/print/", views.po_print, name="po-print"),
+    path("api/po/filter-suggestions/", views.po_filter_suggestions_api, name="po-filter-suggestions"),
 
     
     # Inventory

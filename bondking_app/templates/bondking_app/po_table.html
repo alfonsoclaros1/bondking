@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% load static %}
-{% load user_groups %}
 {% load humanize %}
+{% load user_groups %}
+
 {% block title %}Purchase Orders Table{% endblock %}
 
 {% block content %}
@@ -18,171 +19,178 @@
   <!-- Filters -->
   <div class="card shadow-sm mb-3">
     <div class="card-body">
-      <form method="get" class="row g-2 align-items-end">
+      <form method="get" id="po-filter-form">
 
-        <div class="col-md-3">
-          <label class="form-label small text-muted">Paid To</label>
-          <div class="position-relative">
+        <!-- SMART SEARCH -->
+        <div class="mb-2">
+          <label class="form-label small text-muted">Search</label>
+          <div class="bk-search-wrap position-relative">
             <input
-                type="text"
-                class="form-control form-control-sm"
-                id="paid-to-search"
-                placeholder="Search payee…"
-                autocomplete="off"
-                value="{{ selected.paid_to }}"
+              type="text"
+              class="form-control form-control-sm"
+              id="bk-global-search"
+              placeholder="Type to search (e.g., RVT, PO-2026, ABC Trading, Approved, CHECK_SIGNING)..."
+              autocomplete="off"
             >
 
-            <input
-                type="hidden"
-                name="paid_to"
-                id="paid-to-value"
-                value="{{ selected.paid_to }}"
-            >
+            <div id="bk-tags" class="bk-tags mt-2"></div>
 
             <div
-                id="paid-to-suggestions"
-                class="list-group position-absolute w-100 shadow-sm"
-                style="z-index: 1050; display: none; max-height: 240px; overflow-y: auto;"
+              id="bk-suggestions"
+              class="list-group position-absolute w-100 shadow-sm"
+              style="z-index:1050; display:none; max-height:280px; overflow-y:auto;"
             ></div>
 
-            <!-- Preload Paid To values -->
-            <script type="application/json" id="paid-to-data">
-                [
-                {% for p in paid_to_values %}
-                    "{{ p|escapejs }}"{% if not forloop.last %},{% endif %}
-                {% endfor %}
-                ]
-            </script>
+            <div id="bk-hidden-inputs"></div>
+
+            <input type="hidden" name="q" id="bk-q" value="{{ selected.q|default:'' }}">
+            <input type="hidden" name="sort_by" id="bk-sort-by" value="{{ sort_by }}">
+          </div>
+        </div>
+
+        <!-- MORE FILTERS -->
+        <button
+          type="button"
+          class="btn btn-link p-0 small d-inline-flex align-items-center gap-1"
+          id="bk-more-filters-btn"
+        >
+          <span id="bk-more-filters-text">More Filters</span>
+          <i class="bi bi-chevron-down transition-icon" id="bk-more-filters-icon"></i>
+        </button>
+
+        <div id="bk-more-filters-panel" class="mt-2" style="display:none;">
+          <div class="row g-2 align-items-end">
+
+            <div class="col-md-3">
+              <label class="form-label small text-muted">Paid To</label>
+              <input type="text" class="form-control form-control-sm" name="paid_to"
+                     placeholder="Supplier name…" value="">
             </div>
+
+            <div class="col-md-3">
+              <label class="form-label small text-muted">Prepared By</label>
+              <select name="prepared_by" class="form-select form-select-sm">
+                <option value="">All</option>
+                {% for u in users %}
+                  <option value="{{ u.id }}">
+                    {{ u.get_full_name|default:u.username }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label small text-muted">Status</label>
+              <select name="status" class="form-select form-select-sm">
+                <option value="">All</option>
+                {% for s in statuses %}
+                  <option value="{{ s }}">{{ s|title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label small text-muted">Approval Status</label>
+              <select name="approval_status" class="form-select form-select-sm">
+                <option value="">All</option>
+                {% for val,label in approval_statuses %}
+                  <option value="{{ val }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label small text-muted">Start Date</label>
+              <input type="date" name="start_date" class="form-control form-control-sm"
+                     value="{{ selected.start_date|default:'' }}">
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label small text-muted">End Date</label>
+              <input type="date" name="end_date" class="form-control form-control-sm"
+                     value="{{ selected.end_date|default:'' }}">
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label small text-muted">Product ID</label>
+              <select name="product_id" class="form-select form-select-sm">
+                <option value="">All</option>
+                {% for p in product_ids %}
+                  <option value="{{ p.id }}">{{ p.code }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+          </div>
         </div>
 
-        <div class="col-md-3">
-          <label class="form-label small text-muted">Prepared By</label>
-          <select name="prepared_by" class="form-select form-select-sm">
-            <option value="">All</option>
-            {% for u in users %}
-              <option value="{{ u.id }}"
-                {% if selected.prepared_by|stringformat:"s" == u.id|stringformat:"s" %}selected{% endif %}>
-                {{ u.get_full_name|default:u.username }}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <div class="col-md-3">
-          <label class="form-label small text-muted">Status</label>
-          <select name="status" class="form-select form-select-sm">
-            <option value="">All</option>
-            {% for s in statuses %}
-              <option value="{{ s }}" {% if selected.status == s %}selected{% endif %}>
-                {{ s|title }}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <div class="col-md-3">
-          <label class="form-label small text-muted">Approval Status</label>
-          <select name="approval_status" class="form-select form-select-sm">
-            <option value="">All</option>
-            {% for val,label in approval_statuses %}
-              <option value="{{ val }}" {% if selected.approval_status == val %}selected{% endif %}>
-                {{ label }}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <div class="col-md-3">
-          <label class="form-label small text-muted">Start Date</label>
-          <input type="date" name="start_date" class="form-control form-control-sm"
-                 value="{{ selected.start_date }}">
-        </div>
-
-        <div class="col-md-3">
-          <label class="form-label small text-muted">End Date</label>
-          <input type="date" name="end_date" class="form-control form-control-sm"
-                 value="{{ selected.end_date }}">
-        </div>
-        <div class="col-md-3">
-        <label class="form-label small text-muted">Product ID</label>
-          <select name="product_id" class="form-select form-select-sm">
-            <option value="">All Product IDs</option>
-            {% for p in product_ids %}
-              <option value="{{ p.id }}"
-                {% if selected.product_id == p.id|stringformat:"s" %}selected{% endif %}>
-                {{ p.code }}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-
-
-
-        <div class="col-md-3">
-          <label class="form-label small text-muted">Sort By</label>
-          <select name="sort_by" class="form-select form-select-sm">
-            <option value="date_desc" {% if sort_by == "date_desc" %}selected{% endif %}>Date (Newest)</option>
-            <option value="date_asc" {% if sort_by == "date_asc" %}selected{% endif %}>Date (Oldest)</option>
-            <option value="total_desc" {% if sort_by == "total_desc" %}selected{% endif %}>Total (High → Low)</option>
-            <option value="total_asc" {% if sort_by == "total_asc" %}selected{% endif %}>Total (Low → High)</option>
-            <option value="po_desc" {% if sort_by == "po_desc" %}selected{% endif %}>PO No. (Desc)</option>
-            <option value="po_asc" {% if sort_by == "po_asc" %}selected{% endif %}>PO No. (Asc)</option>
-          </select>
-        </div>
-
-        <div class="col-12 mt-3 d-flex align-items-center gap-3">
+        <!-- ACTION ROW -->
+        <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
           <button class="btn btn-sm btn-primary">Apply Filters</button>
           <a href="{% url 'po-table' %}" class="btn btn-sm btn-outline-secondary">Reset</a>
 
-          <div class="form-check">
-            <input class="form-check-input"
-                  type="checkbox"
-                  name="hide_archived"
-                  value="0"
-                  {% if hide_archived %}checked{% endif %}>
+          <a href="{% url 'po-table-export' %}?{{ request.GET.urlencode }}"
+             class="btn btn-sm btn-outline-success">
+            Export to Excel
+          </a>
+
+          <!-- SORT DROPDOWN BUTTON -->
+          <div class="dropdown">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown">
+              Sort
+            </button>
+            <ul class="dropdown-menu">
+              <li><button type="button" class="dropdown-item" data-sort="date_desc">Date (Newest)</button></li>
+              <li><button type="button" class="dropdown-item" data-sort="date_asc">Date (Oldest)</button></li>
+              <li><button type="button" class="dropdown-item" data-sort="total_desc">Total (High → Low)</button></li>
+              <li><button type="button" class="dropdown-item" data-sort="total_asc">Total (Low → High)</button></li>
+              <li><button type="button" class="dropdown-item" data-sort="po_desc">PO No. (Desc)</button></li>
+              <li><button type="button" class="dropdown-item" data-sort="po_asc">PO No. (Asc)</button></li>
+            </ul>
+          </div>
+
+          <!-- INLINE CHECKBOXES (AUTO APPLY) -->
+          <div class="form-check form-check-inline mb-0">
+            <input class="form-check-input" type="checkbox" name="hide_archived" value="1"
+                   {% if hide_archived %}checked{% endif %}>
             <label class="form-check-label small text-muted">Hide Archived</label>
           </div>
 
-          <div class="form-check">
-            <input class="form-check-input"
-                  type="checkbox"
-                  name="hide_cancelled"
-                  value="0"
-                  {% if hide_cancelled %}checked{% endif %}>
+          <div class="form-check form-check-inline mb-0">
+            <input class="form-check-input" type="checkbox" name="hide_cancelled" value="1"
+                   {% if hide_cancelled %}checked{% endif %}>
             <label class="form-check-label small text-muted">Hide Cancelled</label>
           </div>
-          <a
-            href="{% url 'po-table-export' %}?{{ request.GET.urlencode }}"
-            class="btn btn-sm btn-outline-success"
-            >
-            Export to Excel
-           </a>
         </div>
+
       </form>
     </div>
   </div>
 
-  <!-- Table -->
+  <!-- TABLE -->
   <div class="card shadow-sm">
-    <div class="table-responsive">
-      <table class="table table-hover align-middle mb-0">
+    <div class="card-body p-0">
+      <table class="table table-hover align-middle mb-0 po-table">
         <thead class="table-light">
           <tr>
-            <th style="width: 10%">PO #</th>
-            <th style="width: 9%">Date</th>
-            <th style="width: 20%">Paid To</th>
-            <th style="width: 14%">Product ID</th>
-            <th style="width: 9%">Status</th>
-            <th style="width: 9%">Prepared By</th>
-            <th style="width: 9%">Approval</th>
-            <th style="width: 10%">Total</th>
-            <th style="width: 10%" class="text-end">Actions</th>
+            <th class="ps-3" style="width:32px;">
+              <input type="checkbox" id="select-all">
+            </th>
+            <th>PO #</th>
+            <th>Date</th>
+            <th>Paid To</th>
+            <th>Product ID</th>
+            <th>Status</th>
+            <th>Prepared By</th>
+            <th>Approval</th>
+            <th class="text-end">Total</th>
+            <th class="text-end">Actions</th>
           </tr>
         </thead>
+
         <tbody>
           {% for po in page_obj %}
-            <tr class="
+            <tr class="po-row
               {% if po.is_cancelled %}table-danger
               {% elif po.is_archived %}table-success
               {% elif po.status == 'CHECK_SIGNING' and user|has_group:'AGR' %}table-warning
@@ -192,172 +200,450 @@
               {% elif po.status == 'PURCHASE_ORDER' and user|has_group:'RVT' %}table-warning
               {% endif %}
             ">
+              <td class="ps-3">
+                <input type="checkbox"
+                       class="po-checkbox"
+                       value="{{ po.id }}"
+                       data-total="{{ po.total }}"
+                       onclick="event.stopPropagation();">
+              </td>
+
               <td class="fw-semibold">
-                {% if po.po_number %}
-                  <a href="{% url 'po-edit' po.id %}" class="text-decoration-none fw-medium">
-                    {{ po.po_number }}
-                  </a>
-                {% else %}
-                  {{ po.rfp_number }}
-                {% endif %}
+                <a href="{% url 'po-edit' po.id %}" class="text-decoration-none">
+                  {{ po.po_number|default:po.rfp_number }}
+                </a>
+
                 {% if po.is_cancelled %}
-                    <span class="badge bg-danger ms-2">Cancelled</span>
+                  <span class="badge bg-danger ms-2">Cancelled</span>
                 {% elif po.is_archived %}
-                    <span class="badge bg-success ms-2">Archived</span>
+                  <span class="badge bg-success ms-2">Archived</span>
                 {% endif %}
               </td>
+
               <td class="small text-muted">{{ po.date|date:"Y-m-d" }}</td>
               <td>{{ po.paid_to }}</td>
               <td>{{ po.product_id_ref.code }}</td>
               <td><span class="badge bg-secondary">{{ po.status|title }}</span></td>
               <td class="small">{{ po.prepared_by.get_full_name|default:po.prepared_by.username }}</td>
+
               <td>
-                <span class="badge {% if po.approval_status == 'APPROVED' %}bg-success
-                                   {% elif po.approval_status == 'DECLINED' %}bg-danger
-                                   {% else %}bg-warning{% endif %}">
+                <span class="badge
+                  {% if po.approval_status == 'APPROVED' %}bg-success
+                  {% elif po.approval_status == 'DECLINED' %}bg-danger
+                  {% else %}bg-warning{% endif %}">
                   {{ po.approval_status|title }}
                 </span>
               </td>
-              <td class="fw-semibold">₱{{ po.total|floatformat:2|intcomma  }}</td>
+
+              <td class="text-end fw-semibold">₱{{ po.total|floatformat:2|intcomma }}</td>
+
               <td class="text-end">
                 <a href="{% url 'po-edit' po.id %}" class="btn btn-outline-primary btn-sm">Open</a>
-                {% if is_top_management and not po.is_cancelled %}
-                <form method="post"
-                    action="{% url 'po-cancel' po.id %}"
-                    class="d-inline"
-                    onsubmit="return confirm('Cancel this PO? This cannot be undone.')">
-                {% csrf_token %}
-                <button class="btn btn-sm btn-outline-danger">Cancel</button>
-                </form>
-    {% endif %}
 
+                {% if is_top_management and not po.is_cancelled %}
+                  <form method="post"
+                        action="{% url 'po-cancel' po.id %}"
+                        class="d-inline"
+                        onsubmit="return confirm('Cancel this PO? This cannot be undone.')">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-danger">Cancel</button>
+                  </form>
+                {% endif %}
               </td>
             </tr>
           {% empty %}
             <tr>
-              <td colspan="8" class="text-center text-muted py-4">No purchase orders found.</td>
+              <td colspan="10" class="text-center text-muted py-4">No purchase orders found.</td>
             </tr>
           {% endfor %}
         </tbody>
       </table>
-
-      <!-- Pagination -->
-      <nav class="border-top p-2">
-        <ul class="pagination pagination-sm justify-content-end mb-0">
-          {% if page_obj.has_previous %}
-            <li class="page-item">
-              <a class="page-link" href="?{% querystring page=page_obj.previous_page_number %}">‹</a>
-            </li>
-          {% endif %}
-          <li class="page-item disabled">
-            <span class="page-link">
-              Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
-            </span>
-          </li>
-          {% if page_obj.has_next %}
-            <li class="page-item">
-              <a class="page-link" href="?{% querystring page=page_obj.next_page_number %}">›</a>
-            </li>
-          {% endif %}
-        </ul>
-      </nav>
-
     </div>
+
+    <!-- STICKY FOOTER -->
+    <div class="po-table-footer d-flex justify-content-between align-items-center px-3 py-2 border-top">
+      <div class="small text-muted" id="po-footer-summary">
+        Showing <strong>{{ page_obj.paginator.count }}</strong> PO(s) |
+        Total: <strong>₱{{ total_sum|floatformat:2|intcomma }}</strong>
+      </div>
+
+      <div class="d-flex align-items-center gap-2">
+        <span class="small text-muted">
+          Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        </span>
+
+        <nav aria-label="PO table pagination">
+          <ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}
+              <li class="page-item">
+                <a class="page-link" href="?{% querystring page=page_obj.previous_page_number %}">‹</a>
+              </li>
+            {% endif %}
+            {% if page_obj.has_next %}
+              <li class="page-item">
+                <a class="page-link" href="?{% querystring page=page_obj.next_page_number %}">›</a>
+              </li>
+            {% endif %}
+          </ul>
+        </nav>
+      </div>
+    </div>
+
   </div>
-
 </div>
+{% endblock %}
 
+{% block extra_js %}
+<style>
+/* Sticky footer */
+.po-table-footer{
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  z-index: 5;
+}
+
+/* Sticky header (page scroll, no inner scrollbar) */
+.po-table thead th{
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #fff;
+  border-bottom: 2px solid #dee2e6;
+}
+
+/* Row selection highlight */
+.po-row.selected{
+  background-color: rgba(13,110,253,0.08);
+}
+
+/* Tags */
+.bk-tags{display:flex; flex-wrap:wrap; gap:6px;}
+.bk-tag{
+  display:inline-flex; align-items:center; gap:6px;
+  padding:4px 10px; border-radius:999px;
+  background: rgba(13,110,253,0.08);
+  border: 1px solid rgba(13,110,253,0.18);
+  font-size:12px;
+}
+.bk-tag .bk-tag-key{font-weight:600; color:#0d6efd;}
+.bk-tag button{border:none; background:transparent; padding:0; cursor:pointer; color:#6c757d;}
+.bk-suggestion-badge{
+  font-size:11px; border-radius:999px; padding:2px 8px;
+  border:1px solid rgba(0,0,0,.1); background:#f8f9fa; margin-right:8px;
+}
+
+/* More/Less */
+#bk-more-filters-panel{overflow:hidden; transition:max-height .25s ease, opacity .2s ease;}
+.transition-icon{transition:transform .25s ease;}
+.transition-icon.rotated{transform:rotate(180deg);}
+</style>
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-  const showAll = document.getElementById("showAllCheck");
-  if (showAll) {
-    showAll.addEventListener("change", () => showAll.closest("form").submit());
-  }
-});
-</script>
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const input = document.getElementById("paid-to-search");
-  const hidden = document.getElementById("paid-to-value");
-  const box = document.getElementById("paid-to-suggestions");
-  const dataEl = document.getElementById("paid-to-data");
+  const form = document.getElementById("po-filter-form");
+  const input = document.getElementById("bk-global-search");
+  const box = document.getElementById("bk-suggestions");
+  const tagsEl = document.getElementById("bk-tags");
+  const hiddenEl = document.getElementById("bk-hidden-inputs");
+  const qHidden = document.getElementById("bk-q");
+  const sortHidden = document.getElementById("bk-sort-by");
 
-  if (!input || !hidden || !box || !dataEl) return;
+  if (!form || !input || !box || !tagsEl || !hiddenEl || !qHidden || !sortHidden) return;
 
-  const values = JSON.parse(dataEl.textContent);
-
-  function renderSuggestions(matches) {
-    if (!matches.length) {
-      box.style.display = "none";
-      return;
-    }
-
-    box.innerHTML = matches.map(v => `
-      <button
-        type="button"
-        class="list-group-item list-group-item-action py-1"
-        data-value="${v}"
-      >
-        ${v}
-      </button>
-    `).join("");
-
-    box.style.display = "block";
+  // ---------- helpers ----------
+  function resetPage() {
+    const p = form.querySelector('input[name="page"]');
+    if (p) p.remove();
   }
 
-  input.addEventListener("input", function () {
-    const q = this.value.trim().toLowerCase();
-    hidden.value = this.value;
+  // ---------- More Filters remembered ----------
+  const moreBtn = document.getElementById("bk-more-filters-btn");
+  const morePanel = document.getElementById("bk-more-filters-panel");
+  const textEl = document.getElementById("bk-more-filters-text");
+  const iconEl = document.getElementById("bk-more-filters-icon");
+  const LS_KEY = "po_table_more_filters_open";
 
-    if (!q) {
-      box.style.display = "none";
-      return;
+  function setMoreFilters(open){
+    if (!morePanel) return;
+
+    if (open) {
+      morePanel.style.display = "block";
+      morePanel.style.maxHeight = morePanel.scrollHeight + "px";
+      morePanel.style.opacity = "1";
+      if (textEl) textEl.textContent = "Less Filters";
+      if (iconEl) iconEl.classList.add("rotated");
+    } else {
+      morePanel.style.maxHeight = "0px";
+      morePanel.style.opacity = "0";
+      if (textEl) textEl.textContent = "More Filters";
+      if (iconEl) iconEl.classList.remove("rotated");
+      setTimeout(() => { morePanel.style.display = "none"; }, 250);
     }
+    localStorage.setItem(LS_KEY, open ? "1" : "0");
+  }
 
-    const matches = values
-      .filter(v => v.toLowerCase().includes(q))
-      .slice(0, 10);
+  if (moreBtn && morePanel) {
+    setMoreFilters(localStorage.getItem(LS_KEY) === "1");
+    moreBtn.addEventListener("click", () => {
+      const open = morePanel.style.display !== "none";
+      setMoreFilters(!open);
+    });
+  }
 
-    renderSuggestions(matches);
+  // ---------- Tag system ----------
+  const tags = [];
+  const params = new URLSearchParams(window.location.search);
+
+  function addParamTags(param, key){
+    const values = params.getAll(param).map(v => (v||"").trim()).filter(v => v !== "");
+    const labels = params.getAll(`${param}_label`);
+    values.forEach((v,i) => {
+      tags.push({
+        type: param,
+        key,
+        value: v,
+        display: labels[i] || v,
+        labelParam: `${param}_label`,
+      });
+    });
+  }
+
+  addParamTags("paid_to", "Paid To");
+  addParamTags("prepared_by", "Prepared By");
+  addParamTags("status", "Status");
+  addParamTags("approval_status", "Approval");
+  addParamTags("product_id", "Product ID");
+  addParamTags("po_number", "PO #");
+  addParamTags("rfp_number", "RFP #");
+
+  if (qHidden.value) {
+    tags.push({ type: "q", key: "Keyword", value: qHidden.value, display: qHidden.value });
+  }
+
+  function renderTags(){
+    tagsEl.innerHTML = "";
+    tags.forEach((t, idx) => {
+      const span = document.createElement("span");
+      span.className = "bk-tag";
+      span.innerHTML = `
+        <span class="bk-tag-key">${t.key}:</span>
+        <span class="bk-tag-val"></span>
+        <button type="button" title="Remove">×</button>
+      `;
+      span.querySelector(".bk-tag-val").textContent = t.display;
+      span.querySelector("button").addEventListener("click", () => {
+        tags.splice(idx, 1);
+        renderTags();
+        syncHiddenInputs();
+      });
+      tagsEl.appendChild(span);
+    });
+  }
+
+  function syncHiddenInputs(){
+    hiddenEl.innerHTML = "";
+    qHidden.value = "";
+
+    tags.forEach(t => {
+      if (t.type === "q") {
+        qHidden.value = t.value;
+        return;
+      }
+      const inp = document.createElement("input");
+      inp.type = "hidden";
+      inp.name = t.type;
+      inp.value = t.value;
+      hiddenEl.appendChild(inp);
+
+      if (t.labelParam && t.display) {
+        const lbl = document.createElement("input");
+        lbl.type = "hidden";
+        lbl.name = t.labelParam;
+        lbl.value = t.display;
+        hiddenEl.appendChild(lbl);
+      }
+    });
+  }
+
+  renderTags();
+  syncHiddenInputs();
+
+  // ---------- Suggestions ----------
+  let debounceTimer = null;
+  function showBox(html){
+    box.innerHTML = html;
+    box.style.display = html ? "block" : "none";
+  }
+
+  function escapeHtml(s){
+    return (s || "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+    }[c]));
+  }
+
+  function addTagFromSuggestion(s){
+    const exists = tags.some(t => t.type === s.type && t.value === s.value);
+    if (!exists) {
+      const keyMap = {
+        paid_to: "Paid To",
+        prepared_by: "Prepared By",
+        status: "Status",
+        approval_status: "Approval",
+        product_id: "Product ID",
+        po_number: "PO #",
+        rfp_number: "RFP #",
+        q: "Keyword",
+      };
+      tags.push({
+        type: s.type,
+        key: keyMap[s.type] || s.badge || "Filter",
+        value: s.value,
+        display: s.label,
+        labelParam: `${s.type}_label`,
+      });
+      renderTags();
+      syncHiddenInputs();
+    }
+    input.value = "";
+    showBox("");
+  }
+
+  input.addEventListener("input", function(){
+    const q = input.value.trim();
+    if (!q) return showBox("");
+
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      fetch(`/api/po/filter-suggestions/?q=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (!data.ok) return showBox("");
+          const results = data.results || [];
+          if (!results.length) return showBox("");
+
+          const html = results.map(s => `
+            <button type="button"
+              class="list-group-item list-group-item-action py-1"
+              data-type="${escapeHtml(s.type)}"
+              data-value="${escapeHtml(s.value)}"
+              data-label="${escapeHtml(s.label)}"
+              data-badge="${escapeHtml(s.badge || "")}"
+            >
+              <span class="bk-suggestion-badge">${escapeHtml(s.badge || "")}</span>
+              ${escapeHtml(s.label)}
+            </button>
+          `).join("");
+          showBox(html);
+        })
+        .catch(() => showBox(""));
+    }, 180);
   });
 
-  box.addEventListener("click", function (e) {
+  box.addEventListener("click", function(e){
     const btn = e.target.closest("button");
     if (!btn) return;
-
-    input.value = btn.dataset.value;
-    hidden.value = btn.dataset.value;
-    box.style.display = "none";
+    addTagFromSuggestion({
+      type: btn.dataset.type,
+      value: btn.dataset.value,
+      label: btn.dataset.label,
+      badge: btn.dataset.badge,
+    });
   });
 
-  document.addEventListener("click", function (e) {
-    if (
-      !e.target.closest("#paid-to-search") &&
-      !e.target.closest("#paid-to-suggestions")
-    ) {
-      box.style.display = "none";
+  // Enter selects first suggestion if present; else submit
+  input.addEventListener("keydown", function(e){
+    if (e.key !== "Enter") return;
+    const first = box.querySelector("button");
+    if (first) {
+      e.preventDefault();
+      first.click();
+      return;
     }
+    e.preventDefault();
+    resetPage();
+    syncHiddenInputs();
+    form.submit();
   });
-});
-</script>
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  document
-    .querySelectorAll('input[name="hide_archived"], input[name="hide_cancelled"]')
-    .forEach(cb => {
-      cb.addEventListener("change", () => cb.closest("form").submit());
-    });
-});
-</script>
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  document
-    .querySelectorAll('input[name="hide_archived"], input[name="hide_cancelled"]')
-    .forEach(cb => {
-      cb.addEventListener("change", () => cb.closest("form").submit());
-    });
-});
-</script>
 
+  document.addEventListener("click", function(e){
+    if (!e.target.closest("#bk-global-search") && !e.target.closest("#bk-suggestions")) showBox("");
+  });
+
+  // ---------- Sort applies immediately ----------
+  document.querySelectorAll("[data-sort]").forEach(btn => {
+    btn.addEventListener("click", function(){
+      sortHidden.value = this.dataset.sort;
+      resetPage();
+      syncHiddenInputs();
+      form.submit();
+    });
+  });
+
+  // ---------- Auto-apply hide checkboxes ----------
+  form.querySelectorAll('input[name="hide_archived"], input[name="hide_cancelled"]').forEach(cb => {
+    cb.addEventListener("change", function(){
+      resetPage();
+      syncHiddenInputs();
+      form.submit();
+    });
+  });
+
+  // ---------- Selection UX ----------
+  function refreshSelectedFooter(){
+    const summary = document.getElementById("po-footer-summary");
+    if (!summary) return;
+
+    const checked = Array.from(document.querySelectorAll(".po-checkbox:checked"));
+    if (!checked.length) {
+      summary.innerHTML = `
+        Showing <strong>{{ page_obj.paginator.count }}</strong> PO(s) |
+        Total: <strong>₱{{ total_sum|floatformat:2|intcomma }}</strong>
+      `;
+      return;
+    }
+    let total = 0;
+    checked.forEach(cb => {
+      const val = parseFloat(cb.dataset.total || 0);
+      total += isNaN(val) ? 0 : val;
+    });
+    summary.innerHTML = `
+      <strong>Selected ${checked.length} PO${checked.length > 1 ? "s" : ""}</strong>
+      &nbsp;|&nbsp;
+      Total: <strong>₱${total.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+    `;
+  }
+
+  const selectAll = document.getElementById("select-all");
+  if (selectAll) {
+    selectAll.addEventListener("change", function(){
+      document.querySelectorAll(".po-checkbox").forEach(cb => {
+        cb.checked = selectAll.checked;
+        cb.closest("tr")?.classList.toggle("selected", cb.checked);
+      });
+      refreshSelectedFooter();
+    });
+  }
+
+  document.querySelectorAll(".po-checkbox").forEach(cb => {
+    cb.addEventListener("change", function(){
+      cb.closest("tr")?.classList.toggle("selected", cb.checked);
+      refreshSelectedFooter();
+    });
+  });
+
+  document.addEventListener("click", function(e){
+    const row = e.target.closest("tr.po-row");
+    if (!row) return;
+    if (e.target.closest("a") || e.target.closest("button") || e.target.closest("input")) return;
+
+    const cb = row.querySelector(".po-checkbox");
+    if (!cb) return;
+    cb.checked = !cb.checked;
+    row.classList.toggle("selected", cb.checked);
+    refreshSelectedFooter();
+  });
+
+});
+</script>
 {% endblock %}
