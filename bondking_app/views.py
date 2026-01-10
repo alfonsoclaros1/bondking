@@ -2279,7 +2279,7 @@ def dr_print(request, pk):
 
         pdf = HTML(
             string=html,
-            base_url=request.build_absolute_uri("/")
+            base_url=settings.STATIC_ROOT  # 🔑 THIS IS THE FIX
         ).write_pdf()
 
     else:
