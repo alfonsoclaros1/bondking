@@ -1172,6 +1172,7 @@ def dr_table(request):
     paginator = Paginator(qs, 100)
     page_obj = paginator.get_page(request.GET.get("page", 1))
     client_display = ", ".join(client_names) if client_names else q
+    total_sum = qs.aggregate(total=Sum("total_amount"))["total"] or 0
 
     context = {
         "page_obj": page_obj,
@@ -1188,6 +1189,7 @@ def dr_table(request):
         "client": client,
         "client_name": client_names,
         "client_display": client_display,
+        "total_sum": total_sum,
         "selected": {
             "agent": agent_ids,
             "client_name": client_names,

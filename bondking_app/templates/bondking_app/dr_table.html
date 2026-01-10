@@ -251,8 +251,7 @@
   <!-- Table -->
   <div class="card shadow-sm">
     <div class="card-body p-0">
-      <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
+        <table class="table table-hover align-middle mb-0 dr-table">
           <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
             <tr>    
               <th class="ps-3">
@@ -285,6 +284,7 @@
                     type="checkbox"
                     class="dr-checkbox"
                     value="{{ dr.id }}"
+                    data-total="{{ dr.total_amount }}"
                     onclick="event.stopPropagation();"
                   >
                 </td>
@@ -367,31 +367,50 @@
               </tr>
             {% endfor %}
           </tbody>
-          <nav class="border-top p-2">
-            <ul class="pagination pagination-sm justify-content-end mb-0">
-              {% if page_obj.has_previous %}
-                <li class="page-item">
-                  <a class="page-link" href="?{% querystring page=page_obj.previous_page_number %}">‹</a>
-                </li>
-              {% endif %}
 
-              <li class="page-item disabled">
-                <span class="page-link">
-                  Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
-                </span>
-              </li>
-
-              {% if page_obj.has_next %}
-                <li class="page-item">
-                  <a class="page-link" href="?{% querystring page=page_obj.next_page_number %}">›</a>
-                </li>
-              {% endif %}
-            </ul>
-          </nav>
 
         </table>
-      </div>
     </div>
+    <!-- PAGINATION (BOTTOM) -->
+    <div class="dr-table-footer d-flex justify-content-between align-items-center px-3 py-2 border-top">
+
+      <!-- LEFT: SUMMARY -->
+      <div class="small text-muted" id="dr-footer-summary">
+        Showing <strong>{{ page_obj.paginator.count }}</strong> DR(s) |
+        Total: <strong>₱{{ total_sum|floatformat:2|intcomma }}</strong>
+      </div>
+      <!-- RIGHT: PAGINATION -->
+      <div class="d-flex align-items-center gap-2">
+        <span class="small text-muted">
+          Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        </span>
+
+        <nav aria-label="DR table pagination">
+          <ul class="pagination pagination-sm mb-0">
+            {% if page_obj.has_previous %}
+              <li class="page-item">
+                <a class="page-link"
+                  href="?{% querystring page=page_obj.previous_page_number %}">
+                  ‹
+                </a>
+              </li>
+            {% endif %}
+
+            {% if page_obj.has_next %}
+              <li class="page-item">
+                <a class="page-link"
+                  href="?{% querystring page=page_obj.next_page_number %}">
+                  ›
+                </a>
+              </li>
+            {% endif %}
+          </ul>
+        </nav>
+      </div>
+
+    </div>
+
+
   </div>
 
 </div>
@@ -459,6 +478,12 @@
 {% block extra_js %}
 
 <script>
+
+function resetPage() {
+  const pageInputs = document.querySelectorAll('input[name="page"]');
+  pageInputs.forEach(i => i.remove());
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   const form = document.querySelector("form");
   const input = document.getElementById("bk-global-search");
@@ -611,6 +636,7 @@ function setMoreFilters(open) {
 
   // Ensure tags persist across ALL submits (including checkbox auto-submit)
   form.addEventListener("submit", function () {
+    resetPage();
     syncHiddenInputs();
   });
 
@@ -733,6 +759,8 @@ function setMoreFilters(open) {
 
     // fallback: submit normally
     e.preventDefault();
+    
+    resetPage();
     syncHiddenInputs();
     form.submit();
   });
@@ -753,6 +781,8 @@ function setMoreFilters(open) {
       if (sortHidden) sortHidden.value = this.dataset.sort;
 
       // 🔥 immediately apply sort
+      
+      resetPage();
       syncHiddenInputs();
       form.submit();
     });
@@ -888,184 +918,6 @@ document.addEventListener("click", function(e) {
 });
 
 </script>
-
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const input = document.getElementById("client-search");
-  const hidden = document.getElementById("client-id");
-  const box = document.getElementById("client-suggestions");
-  const dataEl = document.getElementById("client-data");
-
-  if (!input || !hidden || !box || !dataEl) return;
-
-  const clients = JSON.parse(dataEl.textContent);
-
-  function renderSuggestions(matches) {
-    if (!matches.length) {
-      box.style.display = "none";
-      return;
-    }
-    box.addEventListener("mouseover", e => {
-      const btn = e.target.closest("button");
-      if (!btn) return;
-
-      box.querySelectorAll("button").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-    });
-
-    box.innerHTML = matches.map(c => `
-      <button
-        type="button"
-        class="list-group-item list-group-item-action py-1"
-        data-id="${c.id}"
-        data-name="${c.name}"
-      >
-        ${c.name}
-      </button>
-    `).join("");
-
-    box.style.display = "block";
-  }
-
-  input.addEventListener("input", function () {
-    const q = this.value.trim().toLowerCase();
-
-    hidden.value = ""; // reset until selection
-    document.getElementById("client-name").value = this.value.trim();
-
-    if (!q) {
-      box.style.display = "none";
-      return;
-    }
-
-    const matches = clients
-      .filter(c => c.name.toLowerCase().includes(q))
-      .slice(0, 10); // limit results
-
-    renderSuggestions(matches);
-  });
-
-  box.addEventListener("click", function (e) {
-    const btn = e.target.closest("button");
-    if (!btn) return;
-
-    // ✅ Set visible text
-    input.value = btn.dataset.name;
-
-    // ✅ Set hidden client ID (THIS is what the backend reads)
-    hidden.value = btn.dataset.id;
-    document.getElementById("client-name").value = "";
-
-    // ✅ Hide suggestions
-    box.style.display = "none";
-
-    // ✅ Auto-submit the form (same UX as other filters)
-    input.closest("form").submit();
-  });
-
-
-  document.addEventListener("click", function (e) {
-    if (!e.target.closest("#client-search") && !e.target.closest("#client-suggestions")) {
-      box.style.display = "none";
-    }
-  });
-});
-function openHQTransactions(drId) {
-  const modalEl = document.getElementById("hqTransactionsModal");
-  const modal = new bootstrap.Modal(modalEl);
-  const content = document.getElementById("hq-transactions-content");
-  const archiveContainer = document.getElementById("hq-archive-container");
-
-  content.innerHTML = `<div class="text-center text-muted">Loading…</div>`;
-  archiveContainer.innerHTML = "";
-
-  fetch(`/dr/${drId}/hq-transactions/`)
-    .then(res => res.json())
-    .then(data => {
-      if (!data.ok) throw new Error("Failed to load");
-
-      let html = "";
-
-      data.items.forEach(item => {
-        const badgeClass =
-          item.remaining_qty <= 0 ? "bg-danger" :
-          item.remaining_qty <= 5 ? "bg-warning text-dark" :
-          "bg-success";
-
-        html += `
-          <div class="mb-3">
-            <button class="btn btn-light w-100 text-start"
-                    data-bs-toggle="collapse"
-                    data-bs-target="#hq-item-${item.product_name.replace(/\s+/g, '-')}"
-            >
-              <strong>${item.product_name}</strong>
-              <span class="badge ${badgeClass} float-end">
-                Remaining: ${item.remaining_qty}
-              </span>
-            </button>
-
-            <div class="collapse mt-2" id="hq-item-${item.product_name.replace(/\s+/g, '-')}">
-              ${item.transactions.length === 0
-                ? `<div class="text-muted small p-2">No transactions yet</div>`
-                : `
-                <table class="table table-sm">
-                  <thead>
-                    <tr>
-                      <th>DR</th>
-                      <th>Client</th>
-                      <th>Date</th>
-                      <th class="text-end">Qty</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${item.transactions.map(t => `
-                      <tr>
-                        <td>${t.dr_number}</td>
-                        <td>${t.client}</td>
-                        <td>${t.date}</td>
-                        <td class="text-end">${t.quantity}</td>
-                      </tr>
-                    `).join("")}
-                  </tbody>
-                </table>
-              `}
-            </div>
-          </div>
-        `;
-      });
-
-      content.innerHTML = html;
-
-      if (data.can_archive && data.is_top_management) {
-        archiveContainer.innerHTML = `
-          <button class="btn btn-danger" id="hq-archive-btn">
-            Archive HQ Stock
-          </button>
-        `;
-
-        document.getElementById("hq-archive-btn").onclick = function () {
-          if (!confirm("Archive this HQ Stock?")) return;
-
-          fetch(`/dr/${drId}/archive/`, {
-            method: "POST",
-            headers: {
-              "X-CSRFToken": getCookie("csrftoken")
-            }
-          }).then(() => location.reload());
-        };
-      }
-
-    })
-    .catch(() => {
-      content.innerHTML =
-        `<div class="text-danger text-center">Failed to load transactions</div>`;
-    });
-
-  modal.show();
-}
-
-
-</script>
 <style>
 .items-cell {
   max-width: 320px;
@@ -1101,6 +953,25 @@ tr.table-danger td button {
 }
 tr.dr-row.selected {
   background-color: rgba(13,110,253,0.08);
+}
+.dr-table-footer {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  z-index: 5;
+}
+
+.dr-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #fff;
+  border-bottom: 2px solid #dee2e6;
+}
+
+/* Ensure header doesn't overlap footer */
+.dr-table-footer {
+  z-index: 5;
 }
 
 </style>
@@ -1151,96 +1022,36 @@ tr.dr-row.selected {
 }
 
 </style>
-
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-  document
-    .querySelectorAll(
-      'input[name="hide_archived"], input[name="hide_cancelled"], input[name="with_sales_invoice"]'
-    )
-    .forEach(cb => {
-      cb.addEventListener("change", function () {
-        const form = this.closest("form");
 
-        // 🔒 Sync DR number if typed
-        const drInput = document.getElementById("dr-search");
-        const drHidden = document.getElementById("dr-number-hidden");
-        if (drInput && drHidden && !drHidden.value && drInput.value.trim()) {
-          drHidden.value = drInput.value.trim();
-        }
+  const form = document.querySelector('form[method="get"]');
+  if (!form) return;
 
-        // 🔒 Sync client_name if client not selected
-        const clientId = document.getElementById("client-id");
-        const clientName = document.getElementById("client-name");
-        const clientSearch = document.getElementById("client-search");
-        if (clientId && clientName && clientSearch && !clientId.value) {
-          clientName.value = clientSearch.value.trim();
-        }
+  const checkboxes = form.querySelectorAll(
+    'input[name="hide_archived"], input[name="hide_cancelled"], input[name="with_sales_invoice"]'
+  );
 
-        form.submit();
-      });
+  checkboxes.forEach(cb => {
+    cb.addEventListener("change", function () {
+
+      // 🔹 Remove page param so results reset to page 1
+      const pageInputs = form.querySelectorAll('input[name="page"]');
+      pageInputs.forEach(p => p.remove());
+
+      // 🔹 If smart-search tags exist, sync them
+      if (typeof window.syncHiddenInputs === "function") {
+        window.syncHiddenInputs();
+      }
+
+      // 🔹 Submit immediately
+      form.submit();
     });
-});
-
-</script>
-
-
-
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-  const input = document.getElementById("dr-search");
-  const hidden = document.getElementById("dr-number-hidden");
-  const box = document.getElementById("dr-suggestions");
-  const dataEl = document.getElementById("dr-data");
-
-  if (!input || !box || !dataEl) return;
-
-  const drs = JSON.parse(dataEl.textContent);
-
-  input.addEventListener("input", function () {
-    const q = this.value.trim().toLowerCase();
-    hidden.value = "";
-
-    if (!q) {
-      box.style.display = "none";
-      return;
-    }
-
-    const matches = drs.filter(d => d.toLowerCase().includes(q)).slice(0, 10);
-
-    if (!matches.length) {
-      box.style.display = "none";
-      return;
-    }
-
-    box.innerHTML = matches.map(d => `
-      <button type="button"
-              class="list-group-item list-group-item-action py-1"
-              data-value="${d}">
-        ${d}
-      </button>
-    `).join("");
-
-    box.style.display = "block";
   });
 
-  box.addEventListener("click", function (e) {
-    const btn = e.target.closest("button");
-    if (!btn) return;
-
-    input.value = btn.dataset.value;
-    hidden.value = btn.dataset.value;
-    box.style.display = "none";
-    input.closest("form").submit();
-  });
-
-  document.addEventListener("click", function (e) {
-    if (!e.target.closest("#dr-search") && !e.target.closest("#dr-suggestions")) {
-      box.style.display = "none";
-    }
-  });
 });
 </script>
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   const form = document.querySelector("form");
@@ -1293,12 +1104,14 @@ document.addEventListener("DOMContentLoaded", function () {
     document.querySelectorAll(".dr-checkbox").forEach(cb => {
       cb.checked = this.checked;
       cb.closest("tr").classList.toggle("selected", cb.checked);
+      updateSelectedFooter();
     });
   });
 
   document.querySelectorAll(".dr-checkbox").forEach(cb => {
     cb.addEventListener("change", function () {
       this.closest("tr").classList.toggle("selected", this.checked);
+      updateSelectedFooter();
     });
   });
 });
@@ -1395,15 +1208,57 @@ document.addEventListener("click", function (e) {
   const row = e.target.closest("tr.dr-row");
   if (!row) return;
 
-  // Ignore interactive elements
+  // Ignore clicks on interactive elements
   if (
     e.target.closest("a") ||
     e.target.closest("button") ||
     e.target.closest("input")
   ) return;
 
-  window.location.href = row.dataset.editUrl;
+  const checkbox = row.querySelector(".dr-checkbox");
+  if (!checkbox) return;
+
+  checkbox.checked = !checkbox.checked;
+  row.classList.toggle("selected", checkbox.checked);
+
+  refreshBulkButton();
+  updateSelectedFooter();
 });
 </script>
+<script>
+function updateSelectedFooter() {
+  const summary = document.getElementById("dr-footer-summary");
+  if (!summary) return;
+
+  const checked = Array.from(
+    document.querySelectorAll(".dr-checkbox:checked")
+  );
+
+  if (checked.length === 0) {
+    summary.innerHTML = `
+      Showing <strong>{{ page_obj.paginator.count }}</strong> DR(s) |
+      Total: <strong>₱{{ total_sum|floatformat:2|intcomma }}</strong>
+    `;
+    return;
+  }
+
+  let total = 0;
+  checked.forEach(cb => {
+    const val = parseFloat(cb.dataset.total || 0);
+    total += isNaN(val) ? 0 : val;
+  });
+
+  summary.innerHTML = `
+    <strong>Selected ${checked.length} DR${checked.length > 1 ? "s" : ""}</strong>
+    &nbsp;|&nbsp;
+    Total: <strong>₱${total.toLocaleString("en-PH", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}</strong>
+  `;
+}
+</script>
+
+
 
 {% endblock %}
