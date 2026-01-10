@@ -2258,9 +2258,7 @@ def product_id_quick_create(request):
 @login_required
 def dr_print(request, pk):
     dr = get_object_or_404(DeliveryReceipt, pk=pk)
-    logo_url = request.build_absolute_uri(
-        static("bondking_app/img/bondking-logo.png")
-    )
+
     html = render_to_string(
         "bondking_app/dr_print.html",
         {
@@ -2269,7 +2267,6 @@ def dr_print(request, pk):
             "items": dr.items.select_related("product").all(),
             "shipping": 0,
             "other": 0,
-            "logo_url": logo_url,  # ✅ add this
         },
         request=request,  # ✅ IMPORTANT
     )
