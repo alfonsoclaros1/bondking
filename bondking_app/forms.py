@@ -612,8 +612,15 @@ class InventoryIssuanceForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         if self.instance.pk and not self.instance.is_pending:
-            for field in self.fields.values():
-                field.disabled = True
+            for name, field in self.fields.items():
+                # 🔒 Lock everything EXCEPT remarks
+                if name != "remarks":
+                    field.disabled = True
+
+        # ✅ FINAL OVERRIDE: remarks is ALWAYS editable
+        self.fields["remarks"].disabled = False
+
+
 
     def clean(self):
         cleaned_data = super().clean()
