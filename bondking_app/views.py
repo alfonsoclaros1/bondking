@@ -2505,6 +2505,20 @@ def inventory_decline(request, pk):
     issuance.save()
     return redirect("inventory-table")
 
+@login_required
+def inventory_cancel(request, pk):
+    issuance = get_object_or_404(InventoryIssuance, pk=pk)
+
+    if not issuance.is_pending:
+        messages.error(request, "Only pending issuances can be cancelled.")
+        return redirect("inventory-edit", pk=pk)
+
+    issuance.is_cancelled = True
+    issuance.is_pending = False
+    issuance.save(update_fields=["is_cancelled", "is_pending"])
+
+    messages.success(request, "Inventory issuance cancelled.")
+    return redirect("inventory-table")
 
 
 @login_required

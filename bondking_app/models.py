@@ -1235,6 +1235,7 @@ class InventoryIssuance(models.Model):
     is_cancelled = models.BooleanField(default=False)
 
     remarks = models.TextField(blank=True)
+    date = models.DateField(default=timezone.now)
 
     def __str__(self):
         return f"ISS-{self.id}"

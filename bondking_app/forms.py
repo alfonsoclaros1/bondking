@@ -590,16 +590,20 @@ PurchaseOrderParticularFormSet = inlineformset_factory(
 class InventoryIssuanceForm(forms.ModelForm):
     class Meta:
         model = InventoryIssuance
-        fields = [
-            "issuance_type",
-            "remarks",
-        ]
+        fields = ["date", "issuance_type", "remarks"]
         widgets = {
             "issuance_type": forms.Select(
                 attrs={
                     "class": "form-select form-select-sm",
                 }
             ),
+
+            "date": forms.DateInput(attrs={
+                "type": "date",
+                "class": "form-control form-control-sm"
+                }
+            ),
+
             "remarks": forms.Textarea(
                 attrs={
                     "class": "form-control form-control-sm",

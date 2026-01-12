@@ -260,6 +260,14 @@
                 {% else %}
                   <span class="text-muted small">Awaiting approval</span>
                 {% endif %}
+                {% if can_approve_inventory and not row.is_cancelled and not row.is_pending %}
+                <a href="{% url 'inventory-cancel' row.parent_id %}"
+                  class="btn btn-sm btn-outline-danger"
+                  title="Cancel issuance"
+                  onclick="return confirm('Cancel this inventory issuance?');">
+                  Cancel
+                </a>
+                {% endif %}
               {% endif %}
             </td>
           </tr>
