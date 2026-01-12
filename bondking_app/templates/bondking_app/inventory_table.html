@@ -5,12 +5,9 @@
 
     <div class="d-flex align-items-center justify-content-between mb-3">
     <h4 class="mb-0">Inventory</h4>
-
-    {% if is_logistics or is_top_management %}
         <a href="{% url 'inventory-new' %}" class="btn btn-primary btn-sm">
         + New Issuance
         </a>
-    {% endif %}
     </div>
 
 
