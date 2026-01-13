@@ -5,7 +5,7 @@ import traceback
 from urllib import request
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError, PermissionDenied
-from django.http import JsonResponse,HttpResponse
+from django.http import HttpResponseForbidden, JsonResponse,HttpResponse, QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST, require_GET
@@ -2318,8 +2318,9 @@ def inventory_table(request):
     for item in issuance_items:
         iss = item.issuance
 
-        if not hide_cancelled and iss.is_cancelled:
+        if hide_cancelled and iss.is_cancelled:
             continue
+
 
         if selected_types and iss.issuance_type not in selected_types:
             continue
@@ -2461,6 +2462,12 @@ def inventory_table(request):
         response["Content-Disposition"] = "attachment; filename=inventory.xlsx"
         wb.save(response)
         return response
+    nav_ids = [
+        str(r["parent_id"])
+        for r in rows
+        if r.get("parent_type") == "ISSUANCE"
+    ]
+
 
     return render(request, "bondking_app/inventory_table.html", {
         "snapshot": snapshot,
@@ -2478,6 +2485,7 @@ def inventory_table(request):
         "is_logistics": is_logistics,
         "can_approve_inventory": can_approve_inventory,
         "can_manage_inventory_issuance": can_manage_inventory_issuance(user),
+        "nav_ids": ",".join(nav_ids),
     })
 @login_required
 def inventory_cancel(request, pk):
@@ -2489,8 +2497,11 @@ def inventory_cancel(request, pk):
     issuance.is_pending = False
     issuance.save(update_fields=["is_cancelled", "is_pending"])
 
-    messages.success(request, "Inventory issuance cancelled.")
-    return redirect("inventory-table")
+    return JsonResponse({
+        "ok": True,
+        "message": "Inventory issuance cancelled.",
+        "redirect": reverse("inventory-table"),
+        })
 
 
 @login_required
@@ -2499,7 +2510,7 @@ def inventory_new(request):
     is_locked = False  # NEW form is editable
 
     # Permission check (same logic as inventory table)
-    if not can_manage_inventory_issuance(user) or user.is_superuser:
+    if not can_manage_inventory_issuance(user):
         messages.error(request, "Only AGR is allowed to create inventory issuances.")
         return redirect("inventory-table")  
     # ==========================
@@ -2599,31 +2610,110 @@ def inventory_edit(request, pk):
     issuance = get_object_or_404(InventoryIssuance, pk=pk)
     is_locked = issuance.is_cancelled
 
-
-    
     if not can_manage_inventory_issuance(request.user):
-        raise PermissionDenied("You are not allowed to edit this inventory issuance.")
+        is_locked = True
+
 
     # reuse the same form & formset logic as inventory_new
     form = InventoryIssuanceForm(instance=issuance)
-    formset = InventoryIssuanceItemFormSet(instance=issuance,form_kwargs={"is_locked": is_locked},)
+    formset = InventoryIssuanceItemFormSet(
+        request.POST or None,
+        instance=issuance,
+        form_kwargs={"is_locked": is_locked},
+    )
 
     if request.method == "POST" and not is_locked:
         form = InventoryIssuanceForm(request.POST, instance=issuance)
-        formset = InventoryIssuanceItemFormSet(request.POST, instance=issuance)
+        formset = InventoryIssuanceItemFormSet(
+            request.POST or None,
+            instance=issuance,
+            form_kwargs={"is_locked": is_locked},
+        )
 
         if form.is_valid() and formset.is_valid():
             form.save()
             formset.save()
             return redirect("inventory-table")
+    # =========================
+    # NAVIGATION (DR-style)
+    # =========================
+    prev_issuance = next_issuance = None
+    nav_querystring = ""
+
+    # ========= MODE 1: nav_ids (Bulk Open) =========
+    nav_ids = request.GET.get("nav_ids")
+    if nav_ids:
+        ids = [int(i) for i in nav_ids.split(",") if i.isdigit()]
+        if pk in ids:
+            idx = ids.index(pk)
+            if idx > 0:
+                prev_issuance = InventoryIssuance.objects.filter(pk=ids[idx - 1]).first()
+            if idx < len(ids) - 1:
+                next_issuance = InventoryIssuance.objects.filter(pk=ids[idx + 1]).first()
+
+        nav_querystring = f"nav_ids={nav_ids}"
+
+    # ========= MODE 2: filter-based (Reference click) =========
+    elif request.GET.get("from") == "table":
+        qs = InventoryIssuance.objects.all()
+
+        # APPLY SAME FILTERS AS TABLE
+        if request.GET.getlist("type"):
+            qs = qs.filter(issuance_type__in=request.GET.getlist("type"))
+        if request.GET.getlist("product"):
+            qs = qs.filter(items__product_id__in=request.GET.getlist("product")).distinct()
+        if request.GET.get("start_date"):
+            qs = qs.filter(date__gte=request.GET["start_date"])
+        if request.GET.get("end_date"):
+            qs = qs.filter(date__lte=request.GET["end_date"])
+
+        ids = list(qs.order_by("-date").values_list("id", flat=True))
+
+        if pk in ids:
+            idx = ids.index(pk)
+            if idx > 0:
+                prev_issuance = InventoryIssuance.objects.filter(pk=ids[idx - 1]).first()
+            if idx < len(ids) - 1:
+                next_issuance = InventoryIssuance.objects.filter(pk=ids[idx + 1]).first()
+
+        nav_querystring = request.GET.urlencode()
 
     return render(request, "bondking_app/inventory_form.html", {
         "form": form,
         "formset": formset,
         "issuance": issuance,
         "is_locked": is_locked,
+        "prev_issuance": prev_issuance,
+        "next_issuance": next_issuance,
+        "nav_querystring": nav_querystring,
+        "can_manage_inventory_issuance": can_manage_inventory_issuance(request.user),
     })
 
+@login_required
+@require_POST
+def inventory_delete(request, pk):
+    issuance = get_object_or_404(InventoryIssuance, pk=pk)
+
+    # Permission check
+    if not can_manage_inventory_issuance(request.user):
+        return JsonResponse({
+            "ok": False,
+            "error": "You do not have permission to delete this issuance."
+        }, status=403)
+
+    # 🔐 Atomic delete
+    with transaction.atomic():
+        # Delete child items first (explicit & safe)
+        InventoryIssuanceItem.objects.filter(issuance=issuance).delete()
+
+        # Delete parent issuance
+        issuance.delete()
+
+    return JsonResponse({
+        "ok": True,
+        "message": "Inventory issuance deleted successfully.",
+        "redirect": reverse("inventory-table"),
+    })
 
 
 @require_POST

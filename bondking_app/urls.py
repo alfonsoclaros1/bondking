@@ -69,6 +69,7 @@ urlpatterns = [
     path("inventory/new/", views.inventory_new, name="inventory-new"),
     path("inventory/<int:pk>/", views.inventory_edit, name="inventory-edit"),
     path("inventory/<int:pk>/cancel/", views.inventory_cancel, name="inventory-cancel"),
+    path("inventory/<int:pk>/delete/", views.inventory_delete, name="inventory-delete"),
 
 
 

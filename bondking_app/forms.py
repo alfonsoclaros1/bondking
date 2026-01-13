@@ -611,15 +611,14 @@ class InventoryIssuanceForm(forms.ModelForm):
         }
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        if self.instance.pk and not self.instance.is_pending:
-            for name, field in self.fields.items():
-                # 🔒 Lock everything EXCEPT remarks
-                if name != "remarks":
-                    field.disabled = True
-
         # ✅ FINAL OVERRIDE: remarks is ALWAYS editable
         self.fields["remarks"].disabled = False
+        if self.instance.pk and self.instance.is_cancelled:
+            for name, field in self.fields.items():
+                # 🔒 Lock everything EXCEPT remarks
+                field.disabled = True
+
+
 
 
 
@@ -666,10 +665,21 @@ class InventoryIssuanceItemForm(forms.ModelForm):
         return qty
 
     
+
+class BaseInventoryIssuanceItemFormSet(BaseInlineFormSet):
+    def __init__(self, *args, **kwargs):
+        self.is_locked = kwargs.pop("is_locked", False)
+        super().__init__(*args, **kwargs)
+
+        if self.is_locked:
+            self.can_delete = False
+            self.extra = 0
+
 InventoryIssuanceItemFormSet = inlineformset_factory(
-    parent_model=InventoryIssuance,
-    model=InventoryIssuanceItem,
+    InventoryIssuance,
+    InventoryIssuanceItem,
     form=InventoryIssuanceItemForm,
+    formset=BaseInventoryIssuanceItemFormSet,
     extra=1,
     can_delete=True,
 )

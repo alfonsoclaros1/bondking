@@ -9,17 +9,43 @@
   ======================= -->
   <div class="d-flex align-items-center justify-content-between mb-3">
     <h4 class="mb-0">New Inventory Issuance</h4>
-    <a href="{% url 'inventory-table' %}" class="btn btn-outline-secondary btn-sm">
-      Back to Inventory
+    <div class="d-flex justify-content-end align-items-center gap-2 ms-auto">
+
+    <!-- Back to Inventory -->
+    <a
+      href="{% url 'inventory-table' %}?{{ nav_querystring }}"
+      class="btn btn-outline-secondary btn-sm"
+    >
+      ← Back to Inventory
     </a>
+
+    <!-- Divider (optional but clean) -->
+    <span class="text-muted mx-1">|</span>
+
+    <!-- Prev -->
     {% if prev_issuance %}
-    <a href="{% url 'inventory-edit' prev_issuance.id %}?{{ nav_querystring }}"
-      class="btn btn-outline-secondary btn-sm">Prev</a>
+      <a
+        href="{% url 'inventory-edit' prev_issuance.id %}?{{ nav_querystring }}"
+        class="btn btn-outline-secondary btn-sm"
+        title="Previous"
+      >
+        Prev
+      </a>
     {% endif %}
+
+    <!-- Next -->
     {% if next_issuance %}
-    <a href="{% url 'inventory-edit' next_issuance.id %}?{{ nav_querystring }}"
-      class="btn btn-outline-secondary btn-sm">Next</a>
+      <a
+        href="{% url 'inventory-edit' next_issuance.id %}?{{ nav_querystring }}"
+        class="btn btn-outline-secondary btn-sm"
+        title="Next"
+      >
+        Next
+      </a>
     {% endif %}
+
+  </div>
+
 
   </div>
 
@@ -34,26 +60,56 @@
         Issuance Details
       </div>
       <div class="card-body">
+        <div class="row g-3 align-items-start">
+          <!-- Date (short) -->
+          <div class="col-md-2">
+            <label class="form-label small text-muted">Date</label>
+            {{ form.date }}
+          </div>
 
-        <div class="row g-3">
+          <!-- Issuance Type (short) -->
           <div class="col-md-3">
-              <label class="form-label small text-muted">Date</label>
-              {{ form.date }}
-            </div>
-          <div class="col-md-4">
             <label class="form-label small text-muted">
               Issuance Type
             </label>
             {{ form.issuance_type }}
           </div>
 
-          <div class="col-md-8">
+          <!-- Remarks (fills remaining space) -->
+          <div class="col-md-7">
             <label class="form-label small text-muted">
               Remarks (optional)
             </label>
             {{ form.remarks }}
           </div>
         </div>
+        {% if not is_create and can_manage_inventory_issuance %}
+        <div class="d-flex justify-content-end gap-2 mt-3">
+
+          <!-- Cancel Issuance -->
+          <button
+            type="button"
+            class="btn btn-outline-warning btn-sm"
+            id="cancel-issuance-btn"
+            data-url="{% url 'inventory-cancel' form.instance.id %}"
+          >
+            Cancel Issuance
+          </button>
+
+          <!-- Delete Issuance -->
+          <button
+            type="button"
+            class="btn btn-outline-danger btn-sm"
+            id="delete-issuance-btn"
+            data-url="{% url 'inventory-delete' form.instance.id %}"
+          >
+            Delete Issuance
+          </button>
+
+        </div>
+      {% endif %}
+
+
 
       </div>
     </div>
@@ -125,7 +181,43 @@
     </div>
   </form>
 </div>
+<div class="modal fade" id="confirmInventoryActionModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="confirmInventoryActionTitle">
+          Confirm Action
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
 
+      <div class="modal-body" id="confirmInventoryActionBody">
+        Are you sure?
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">
+          Cancel
+        </button>
+        <button type="button" class="btn btn-danger btn-sm" id="confirmInventoryActionBtn">
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_css %}
+<style>
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background-color: #f8f9fa !important;
+  cursor: not-allowed;
+}
+</style>
+{% endblock %}
+{% block extra_js %}
 <!-- =======================
      SIMPLE JS (DR-style)
 ======================= -->
@@ -311,6 +403,72 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
+});
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const modalEl = document.getElementById("confirmInventoryActionModal");
+  if (!modalEl) return;
+
+  const modal = new bootstrap.Modal(modalEl);
+  const titleEl = document.getElementById("confirmInventoryActionTitle");
+  const bodyEl = document.getElementById("confirmInventoryActionBody");
+  const confirmBtn = document.getElementById("confirmInventoryActionBtn");
+
+  function openConfirmModal({ title, body, url, successType }) {
+    titleEl.textContent = title;
+    bodyEl.textContent = body;
+
+    confirmBtn.className = "btn btn-sm btn-" + successType;
+    confirmBtn.onclick = function () {
+      fetch(url, {
+        method: "POST",
+        headers: {
+          "X-CSRFToken": document.querySelector("[name=csrfmiddlewaretoken]").value,
+        },
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (!data.ok) {
+          bkToast(data.error || "Action failed.", "danger");
+          return;
+        }
+        bkToast(data.message, successType);
+        modal.hide();
+        setTimeout(() => window.location.href = data.redirect, 600);
+      })
+      .catch(() => bkToast("Server error.", "danger"));
+    };
+
+    modal.show();
+  }
+
+  // Cancel Issuance
+  const cancelBtn = document.getElementById("cancel-issuance-btn");
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => {
+      openConfirmModal({
+        title: "Cancel Inventory Issuance",
+        body: "This will cancel the issuance and lock it from editing.",
+        url: cancelBtn.dataset.url,
+        successType: "warning",
+      });
+    });
+  }
+
+  // Delete Issuance
+  const deleteBtn = document.getElementById("delete-issuance-btn");
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", () => {
+      openConfirmModal({
+        title: "Delete Inventory Issuance",
+        body: "This will permanently delete the issuance. This cannot be undone.",
+        url: deleteBtn.dataset.url,
+        successType: "danger",
+      });
+    });
+  }
 });
 </script>
 

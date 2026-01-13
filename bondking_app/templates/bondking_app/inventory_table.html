@@ -39,6 +39,7 @@
           {% endfor %}
         </tbody>
       </table>
+      
     </div>
   </div>
 
@@ -161,18 +162,66 @@
 
         <div class="col-12 mt-2">
           <div class="d-flex gap-2 align-items-center">
-            <button type="submit" class="btn btn-sm btn-primary">Apply Filters</button>
-            <a href="{% url 'inventory-table' %}" class="btn btn-sm btn-outline-secondary">Reset</a>
+            <!-- Apply -->
+            <button type="submit" class="btn btn-sm btn-primary">
+              Apply Filters
+            </button>
 
-            <div class="form-check ms-2">
-              <input class="form-check-input" type="checkbox" name="hide_cancelled" value="1" {% if hide_cancelled %}checked{% endif %}>
-              <label class="form-check-label small text-muted">Hide Cancelled</label>
+            <!-- Reset -->
+            <a href="{% url 'inventory-table' %}" class="btn btn-sm btn-outline-secondary">
+              Reset
+            </a>
+
+
+            <!-- Actions -->
+            <div class="dropdown">
+              <button
+                class="btn btn-sm btn-outline-primary dropdown-toggle"
+                type="button"
+                data-bs-toggle="dropdown"
+                id="invBulkActionsBtn"
+                disabled
+              >
+                Actions
+              </button>
+
+              <ul class="dropdown-menu">
+                <li>
+                  <button type="button" class="dropdown-item" onclick="bulkOpenInventory()">Open</button>
+                </li>
+
+                {% if can_manage_inventory_issuance %}
+                  <li><hr class="dropdown-divider"></li>
+                  <li>
+                    <button type="button" class="dropdown-item text-danger" onclick="bulkCancelInventory()">
+                      Cancel
+                    </button>
+                  </li>
+                {% endif %}
+              </ul>
             </div>
 
-            <a href="?{{ request.GET.urlencode }}&export=1" class="btn btn-sm btn-outline-success ms-auto">
+            <!-- Export -->
+            <a href="?{{ request.GET.urlencode }}&export=1"
+              class="btn btn-sm btn-outline-success">
               Export Excel
             </a>
+            <!-- Hide Cancelled -->
+            <div class="form-check ms-2">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                name="hide_cancelled"
+                value="1"
+                {% if hide_cancelled %}checked{% endif %}
+              >
+              <label class="form-check-label small text-muted">
+                Hide Cancelled
+              </label>
+            </div>
+
           </div>
+
         </div>
 
       </form>
@@ -187,30 +236,44 @@
       <table class="table table-hover align-middle mb-0">
         <thead class="table-light" style="position: sticky; top: 0; z-index: 1;">
           <tr>
+            <th class="ps-3">
+              <input type="checkbox" id="inv-select-all">
+            </th>
+            <th>Reference</th>
             <th>Date</th>
             <th>Type</th>
-            <th>Reference</th>
             <th>Item</th>
             <th class="text-end">Qty</th>
             <th>From</th>
             <th>To</th>
             <th>Status</th>
-            <th class="text-end">Actions</th>
           </tr>
         </thead>
         <tbody>
           {% for row in rows %}
           <tr class="
+            inv-row
             {% if row.is_cancelled %}table-danger
             {% elif row.is_pending %}table-warning
-            {% elif forloop.counter0|divisibleby:2 %}table-light
             {% endif %}
-          ">
-            <td>{{ row.date|date:"Y-m-d" }}</td>
-            <td>{{ row.type_label }}</td>
-            <td class="fw-semibold">
+          "
+          data-parent-id="{{ row.parent_id }}"
+          data-parent-type="{{ row.parent_type }}"
+          data-edit-url="{% url 'inventory-edit' row.parent_id %}?from=table&{{ request.GET.urlencode }}"
+          >
+            <td class="ps-3">
+              <input
+                type="checkbox"
+                class="inv-checkbox"
+                value="{{ row.parent_id }}"
+                data-type="{{ row.parent_type }}"
+                onclick="event.stopPropagation();"
+              >
+            </td>
+                        <td class="fw-semibold">
               {% if row.parent_type == "ISSUANCE" %}
-                <a href="{% url 'inventory-edit' row.parent_id %}" class="text-decoration-none">
+                <a href="{% url 'inventory-edit' row.parent_id %}?from=table&{{ request.GET.urlencode }}"
+                  class="text-decoration-none">
                   {{ row.ref }}
                 </a>
               {% elif row.parent_type == "DR" %}
@@ -221,6 +284,8 @@
                 {{ row.ref }}
               {% endif %}
             </td>
+            <td>{{ row.date|date:"Y-m-d" }}</td>
+            <td>{{ row.type_label }}</td>
             <td>{{ row.product.name }}</td>
             <td class="text-end">{{ row.qty }}</td>
             <td>{{ row.from }}</td>
@@ -243,20 +308,6 @@
               {% if row.is_cancelled %}Cancelled
               {% elif row.is_pending %}Pending
               {% else %}Approved
-              {% endif %}
-            </td>
-            <td class="text-end">
-              {% if can_manage_inventory_issuance %}
-                <a href="{% url 'inventory-edit' row.parent_id %}"
-                  class="btn btn-sm btn-outline-primary">
-                  Edit
-                </a>
-                <a href="{% url 'inventory-cancel' row.parent_id %}"
-                  class="btn btn-sm btn-outline-danger"
-                  title="Cancel issuance"
-                  onclick="return confirm('Cancel this inventory issuance?');">
-                  Cancel
-                </a>
               {% endif %}
             </td>
           </tr>
@@ -291,7 +342,49 @@ tr.table-danger td {
   text-decoration: line-through;
   opacity: 0.75;
 }
+.inv-row.selected {
+  background-color: rgba(13,110,253,0.08);
+  opacity: 0.92;
+}
+
+.inv-row {
+  cursor: pointer;
+}
+
+.inv-row a,
+.inv-row button,
+.inv-row input {
+  cursor: default;
+}
 </style>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll("tr.inv-row").forEach(row => {
+    row.addEventListener("click", function (e) {
+      // Ignore interactive elements
+      if (
+        e.target.closest("a") ||
+        e.target.closest("button") ||
+        e.target.closest("input")
+      ) return;
+
+      const checkbox = row.querySelector(".inv-checkbox");
+      if (!checkbox) return;
+
+      checkbox.checked = !checkbox.checked;
+      row.classList.toggle("selected", checkbox.checked);
+
+      // IMPORTANT: trigger change so bulk logic knows
+      checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+
+      refreshInvBulkButton();
+
+    });
+  });
+});
+</script>
+
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
 
@@ -382,4 +475,118 @@ document.addEventListener("click", function(e) {
   }
 });
 </script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const selectAll = document.getElementById("inv-select-all");
+
+  selectAll?.addEventListener("change", function () {
+    document.querySelectorAll(".inv-checkbox").forEach(cb => {
+      cb.checked = this.checked;
+      cb.closest("tr").classList.toggle("selected", cb.checked);
+      refreshInvBulkButton();
+    });
+  });
+
+  function syncRowSelection(cb) {
+    const row = cb.closest("tr");
+    if (!row) return;
+    row.classList.toggle("selected", cb.checked);
+  }
+
+  document.querySelectorAll(".inv-checkbox").forEach(cb => {
+    cb.addEventListener("change", function () {
+      syncRowSelection(this);
+      refreshInvBulkButton();
+    });
+  });
+
+});
+</script>
+<script>
+function getSelectedInventory() {
+  return Array.from(document.querySelectorAll(".inv-checkbox:checked"))
+    .map(cb => ({
+      id: cb.value,
+      type: cb.dataset.type
+    }));
+}
+
+function refreshInvBulkButton() {
+  document.getElementById("invBulkActionsBtn").disabled =
+    getSelectedInventory().length === 0;
+}
+</script>
+
+<script>
+function bulkOpenInventory() {
+  syncInvSelectionOrder();
+
+  const ids = window.invSelectionOrder;
+  if (!ids.length) return;
+
+  // Open LAST selected (matches your example)
+  const openId = ids[0];
+
+  window.location.href =
+    `/inventory/${openId}/?nav_ids=${ids.join(",")}`;
+}
+</script>
+
+
+<script>
+function bulkCancelInventory() {
+  const items = getSelectedInventory()
+    .filter(i => i.type === "ISSUANCE");
+
+  if (!items.length) {
+    alert("Only inventory issuances can be cancelled.");
+    return;
+  }
+
+  if (!confirm(`Cancel ${items.length} issuance(s)?`)) return;
+
+  items.forEach(i => {
+    fetch(`/inventory/${i.id}/cancel/`, {
+      method: "POST",
+      headers: { "X-CSRFToken": getCookie("csrftoken") }
+    });
+  });
+
+  setTimeout(() => location.reload(), 500);
+}
+</script>
+<script>
+/* =========================
+   SELECTION ORDER TRACKING
+========================= */
+window.invSelectionOrder = [];
+
+function syncInvSelectionOrder() {
+  const checked = Array.from(
+    document.querySelectorAll(".inv-checkbox:checked")
+  ).map(cb => cb.value);
+
+  // Remove unchecked
+  window.invSelectionOrder =
+    window.invSelectionOrder.filter(id => checked.includes(id));
+
+  // Add newly checked (preserve order)
+  checked.forEach(id => {
+    if (!window.invSelectionOrder.includes(id)) {
+      window.invSelectionOrder.push(id);
+    }
+  });
+}
+
+// Update order whenever selection changes
+document.addEventListener("change", function (e) {
+  if (
+    e.target.classList.contains("inv-checkbox") ||
+    e.target.id === "inv-select-all"
+  ) {
+    syncInvSelectionOrder();
+  }
+});
+</script>
+
 {% endblock %}
