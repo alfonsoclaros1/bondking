@@ -12,6 +12,15 @@
     <a href="{% url 'inventory-table' %}" class="btn btn-outline-secondary btn-sm">
       Back to Inventory
     </a>
+    {% if prev_issuance %}
+    <a href="{% url 'inventory-edit' prev_issuance.id %}?{{ nav_querystring }}"
+      class="btn btn-outline-secondary btn-sm">Prev</a>
+    {% endif %}
+    {% if next_issuance %}
+    <a href="{% url 'inventory-edit' next_issuance.id %}?{{ nav_querystring }}"
+      class="btn btn-outline-secondary btn-sm">Next</a>
+    {% endif %}
+
   </div>
 
   <form method="post">
@@ -109,13 +118,11 @@
         <button
           type="submit"
           class="btn btn-primary"
-          id="submit-btn"
           {% if is_locked %}disabled{% endif %}
         >
-          {% if is_locked %}Approved{% else %}Submit for Approval{% endif %}
+          Save
         </button>
     </div>
-
   </form>
 </div>
 

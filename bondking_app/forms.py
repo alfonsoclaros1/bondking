@@ -125,10 +125,7 @@ class DeliveryReceiptForm(forms.ModelForm):
         self.fields["payment_status"].disabled = True
 
         # Top Management and AGR can edit
-        if self.user and (
-            is_top_management(self.user)
-            or self.user.groups.filter(name="AGR").exists()
-        ):
+        if self.user and self.user.groups.filter(name="AGR").exists():
             self.fields["delivery_status"].disabled = False
             self.fields["payment_status"].disabled = False
 

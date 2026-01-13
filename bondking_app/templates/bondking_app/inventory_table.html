@@ -5,9 +5,11 @@
 
     <div class="d-flex align-items-center justify-content-between mb-3">
     <h4 class="mb-0">Inventory</h4>
-        <a href="{% url 'inventory-new' %}" class="btn btn-primary btn-sm">
-        + New Issuance
-        </a>
+        {% if can_manage_inventory_issuance %}
+          <a href="{% url 'inventory-new' %}" class="btn btn-primary btn-sm">
+          + New Issuance
+          </a>
+        {% endif %}
     </div>
 
 
@@ -244,30 +246,17 @@
               {% endif %}
             </td>
             <td class="text-end">
-              {% if row.parent_type == "ISSUANCE" and row.is_pending %}
-                {% if can_approve_inventory %}
-                  <a href="{% url 'inventory-approve' row.parent_id %}"
-                    class="btn btn-sm btn-success"
-                    title="Approve issuance">
-                    ✔
-                  </a>
-
-                  <a href="{% url 'inventory-decline' row.parent_id %}"
-                    class="btn btn-sm btn-danger"
-                    title="Decline issuance">
-                    ✖
-                  </a>
-                {% else %}
-                  <span class="text-muted small">Awaiting approval</span>
-                {% endif %}
-                {% if can_approve_inventory and not row.is_cancelled and not row.is_pending %}
+              {% if can_manage_inventory_issuance %}
+                <a href="{% url 'inventory-edit' row.parent_id %}"
+                  class="btn btn-sm btn-outline-primary">
+                  Edit
+                </a>
                 <a href="{% url 'inventory-cancel' row.parent_id %}"
                   class="btn btn-sm btn-outline-danger"
                   title="Cancel issuance"
                   onclick="return confirm('Cancel this inventory issuance?');">
                   Cancel
                 </a>
-                {% endif %}
               {% endif %}
             </td>
           </tr>

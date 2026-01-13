@@ -66,8 +66,6 @@ urlpatterns = [
     
     # Inventory
     path("inventory/table/", views.inventory_table, name="inventory-table"),
-    path("inventory/<int:pk>/approve/", views.inventory_approve, name="inventory-approve"),
-    path("inventory/<int:pk>/decline/", views.inventory_decline, name="inventory-decline"),
     path("inventory/new/", views.inventory_new, name="inventory-new"),
     path("inventory/<int:pk>/", views.inventory_edit, name="inventory-edit"),
     path("inventory/<int:pk>/cancel/", views.inventory_cancel, name="inventory-cancel"),

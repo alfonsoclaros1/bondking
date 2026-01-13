@@ -76,6 +76,12 @@ def get_user_role(user) -> str | None:
         return "TopManagement"
     return None
 
+# Inventory Issuance permissions (EXTENSIBLE)
+INVENTORY_ISSUANCE_EDIT_ROLES = {"AGR"}
+
+def can_manage_inventory_issuance(user):
+    role = get_user_role(user)
+    return user.is_superuser or role in INVENTORY_ISSUANCE_EDIT_ROLES
 
 # ================  ENUM CHOICES  ================
 

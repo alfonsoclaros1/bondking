@@ -39,6 +39,7 @@ from .models import (
     KANBAN_COLUMNS,
     PaymentMethod,
     ProductID,
+    can_manage_inventory_issuance,
     get_effective_role,
     get_user_role,
     is_top_management,
@@ -2476,42 +2477,13 @@ def inventory_table(request):
         "is_top_management": is_top_management,
         "is_logistics": is_logistics,
         "can_approve_inventory": can_approve_inventory,
+        "can_manage_inventory_issuance": can_manage_inventory_issuance(user),
     })
-
-@login_required
-def inventory_approve(request, pk):
-    issuance = InventoryIssuance.objects.get(pk=pk)
-    if not (
-        request.user.is_superuser
-        or request.user.groups.filter(name__in=["LogisticsHead", "TopManagement"]).exists()
-    ):
-        return HttpResponse(status=403)
-    issuance.is_pending = False
-    issuance.save()
-    return redirect("inventory-table")
-
-
-@login_required
-def inventory_decline(request, pk):
-    issuance = InventoryIssuance.objects.get(pk=pk)
-    if not (
-        request.user.is_superuser
-        or request.user.groups.filter(name__in=["LogisticsHead", "TopManagement"]).exists()
-    ):
-        return HttpResponse(status=403)
-
-    issuance.is_pending = False
-    issuance.is_cancelled = True
-    issuance.save()
-    return redirect("inventory-table")
-
 @login_required
 def inventory_cancel(request, pk):
     issuance = get_object_or_404(InventoryIssuance, pk=pk)
-
-    if not issuance.is_pending:
-        messages.error(request, "Only pending issuances can be cancelled.")
-        return redirect("inventory-edit", pk=pk)
+    if not can_manage_inventory_issuance(request.user):
+        raise PermissionDenied("You are not allowed to cancel this issuance.")
 
     issuance.is_cancelled = True
     issuance.is_pending = False
@@ -2527,12 +2499,9 @@ def inventory_new(request):
     is_locked = False  # NEW form is editable
 
     # Permission check (same logic as inventory table)
-    if not (
-        user.groups.filter(name__in=["LogisticsOfficer", "LogisticsHead"]).exists()
-        or user.is_superuser
-    ):
-        messages.error(request, "You do not have permission to create an inventory issuance.")
-        return redirect("inventory-table")
+    if not can_manage_inventory_issuance(user) or user.is_superuser:
+        messages.error(request, "Only AGR is allowed to create inventory issuances.")
+        return redirect("inventory-table")  
     # ==========================
     # WH STOCK MAP (for display)
     # ==========================
@@ -2604,15 +2573,14 @@ def inventory_new(request):
             with transaction.atomic():
                 issuance = form.save(commit=False)
                 issuance.created_by = user
-                issuance.is_pending = True
+                issuance.is_pending = False
                 issuance.save()
 
                 formset.instance = issuance
                 formset.save()
 
-            messages.success(request, "Inventory issuance submitted for approval.")
+            messages.success(request, "Inventory issuance created successfully.")
             return redirect("inventory-table")
-
         else:
             messages.error(request, "Please correct the errors below.")
 
@@ -2629,13 +2597,16 @@ def inventory_new(request):
 @login_required
 def inventory_edit(request, pk):
     issuance = get_object_or_404(InventoryIssuance, pk=pk)
-    is_locked = not issuance.is_pending
+    is_locked = issuance.is_cancelled
+
+
+    
+    if not can_manage_inventory_issuance(request.user):
+        raise PermissionDenied("You are not allowed to edit this inventory issuance.")
 
     # reuse the same form & formset logic as inventory_new
     form = InventoryIssuanceForm(instance=issuance)
     formset = InventoryIssuanceItemFormSet(instance=issuance,form_kwargs={"is_locked": is_locked},)
-
-    is_locked = not issuance.is_pending
 
     if request.method == "POST" and not is_locked:
         form = InventoryIssuanceForm(request.POST, instance=issuance)
