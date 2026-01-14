@@ -250,6 +250,8 @@ class DeliveryReceiptForm(forms.ModelForm):
                 "proof_of_delivery",
                 "sales_invoice_no",
                 "deposit_slip_no",
+                "payment_status",
+                "delivery_status",
             }
 
             for fname, field in self.fields.items():
