@@ -1,3 +1,4 @@
+from decimal import ROUND_HALF_UP, Decimal
 from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import models
@@ -133,9 +134,7 @@ class POStatus(models.TextChoices):
     REQUEST_FOR_PAYMENT_APPROVAL = "REQUEST_FOR_PAYMENT_APPROVAL", "Request for Payment (Approval)"
     PURCHASE_ORDER = "PURCHASE_ORDER", "Purchase Order"
     PURCHASE_ORDER_APPROVAL = "PURCHASE_ORDER_APPROVAL", "Purchase Order (Approval)"
-    CHECK_CREATION = "CHECK_CREATION", "Check Creation"
-    CHECK_SIGNING = "CHECK_SIGNING", "Check Signing"
-    PAYMENT_RELEASE = "PAYMENT_RELEASE", "Payment Release"
+    BILLING = "BILLING", "Billing"
     PO_FILING = "PO_FILING", "PO Filing"
     ARCHIVED = "ARCHIVED", "Archived"
 
@@ -169,13 +168,11 @@ PO_FLOW = [
     "REQUEST_FOR_PAYMENT_APPROVAL",
     "PURCHASE_ORDER",
     "PURCHASE_ORDER_APPROVAL",
-    "CHECK_CREATION",
-    "CHECK_SIGNING",
-    "PAYMENT_RELEASE",
+    "BILLING",
     "PO_FILING",
 ]
-
 PO_COLUMN_INDEX = {col: idx for idx, col in enumerate(PO_FLOW)}
+
 
 AGR_GROUP = "AGR"
 RVT_GROUP = "RVT"
@@ -353,7 +350,7 @@ DR_STEP_META = {
         "approver_roles": {"AccountingHead", "TopManagement"},
         "decliner_roles": {"AccountingHead", "TopManagement"},
         "required_fields": [],
-        "required_before_forward":["payment_due"],  # matches your current precondition (message typo aside)
+        "required_before_forward":[],  # matches your current precondition (message typo aside)
         "status_map": {"delivery_status": None, "payment_status": PaymentStatus.FOR_COUNTER_CREATION},
         "approval_on_enter_forward": True,
         "auto_approve_on_enter_forward": False,
@@ -367,7 +364,7 @@ DR_STEP_META = {
         "approver_roles": {"LogisticsHead", "TopManagement"},
         "decliner_roles": {"LogisticsHead", "TopManagement"},
         "required_fields": [],
-        "required_before_forward": ["payment_due"],
+        "required_before_forward": [],
         "status_map": {"delivery_status": None, "payment_status": PaymentStatus.FOR_COUNTERING},
         "approval_on_enter_forward": True,
         "auto_approve_on_enter_forward": False,
@@ -1281,6 +1278,79 @@ class DeliveryReceiptUpdate(models.Model):
         return f"Update for {self.delivery_receipt.dr_number} at {self.timestamp}"
 
 
+
+
+    
+# =========================
+#  Purchase Order
+# =========================
+
+
+PO_META = {
+    POStatus.REQUEST_FOR_PAYMENT: {
+        "label": "Request for Payment",
+        "forward_roles": {"AccountingOfficer", "RVT"},
+        "approver_roles": set(),
+        "decliner_roles": set(),
+        "requires_approval": False,
+        "on_approve": None,
+    },
+
+    POStatus.REQUEST_FOR_PAYMENT_APPROVAL: {
+        "label": "Request for Payment Approval",
+        "forward_roles": set(),
+        "approver_roles": {"AccountingHead", "TopManagement"},
+        "decliner_roles": {"RVT"},
+        "requires_approval": True,
+        "on_approve": POStatus.PURCHASE_ORDER,
+    },
+
+    POStatus.PURCHASE_ORDER: {
+        "label": "Purchase Order",
+        "forward_roles": {"AccountingOfficer", "RVT"},
+        "approver_roles": set(),
+        "decliner_roles": set(),
+        "requires_approval": False,
+        "on_approve": None,
+    },
+
+    POStatus.PURCHASE_ORDER_APPROVAL: {
+        "label": "Purchase Order Approval",
+        "forward_roles": set(),
+        "approver_roles": {"TopManagement"},
+        "decliner_roles": {"JGG"},
+        "requires_approval": True,
+        "on_approve": POStatus.BILLING,
+        "side_effect": "generate_po_number",
+    },
+
+    POStatus.BILLING: {
+        "label": "Billing",
+        "forward_roles": {"RVT"},
+        "approver_roles": set(),
+        "decliner_roles": set(),
+        "requires_approval": False,
+        "gate": "billing_totals_match_and_paid",
+    },
+
+    POStatus.PO_FILING: {
+        "label": "PO Filing",
+        "forward_roles": {"RVT"},
+        "approver_roles": {"AccountingOfficer", "AccountingHead", "TopManagement"},
+        "decliner_roles": {"RVT"},
+        "requires_approval": True,
+        "on_approve": None,
+    },
+
+    POStatus.ARCHIVED: {
+        "label": "Archived",
+        "forward_roles": set(),
+        "approver_roles": set(),
+        "decliner_roles": set(),
+        "requires_approval": False,
+    },
+}
+
 class PurchaseOrder(models.Model):
     paid_to = models.CharField(max_length=255, help_text="Supplier name")
     address = models.TextField(help_text="Supplier address")
@@ -1297,8 +1367,6 @@ class PurchaseOrder(models.Model):
         choices=POApprovalStatus.choices,
         default=POApprovalStatus.PENDING,
     )
-
-    cheque_number = models.CharField(max_length=50, blank=True)
     is_archived = models.BooleanField(default=False)
     is_cancelled = models.BooleanField(default=False)
 
@@ -1402,43 +1470,35 @@ class PurchaseOrder(models.Model):
         idx = PO_COLUMN_INDEX[self.status]
         return PO_FLOW[idx + 1] if idx < len(PO_FLOW) - 1 else None
     
-    def submit_to_next(self, user, user_notes: str = "", simulated_role: str | None = None):
+    def submit_to_next(self, user, user_notes="", simulated_role=None):
         actor_role = self.resolve_actor_role(user, simulated_role)
-        if self.status in [
-            POStatus.REQUEST_FOR_PAYMENT_APPROVAL,
-            POStatus.PURCHASE_ORDER_APPROVAL,
-            POStatus.CHECK_SIGNING,
-        ] and self.approval_status != POApprovalStatus.APPROVED:
-            raise ValidationError("This step must be approved before proceeding.")
-
         if not actor_role:
             raise PermissionDenied("No role.")
 
         if self.is_archived or self.status == POStatus.ARCHIVED:
             raise ValidationError("Archived POs cannot be submitted.")
 
-        # Must be approved before you can submit forward (except early drafts)
-        # Draft stages allow submit even if approval_status is DECLINED/APPROVED.
-        if self.status in [POStatus.CHECK_CREATION, POStatus.PAYMENT_RELEASE, POStatus.PO_FILING]:
-            if self.approval_status not in [POApprovalStatus.APPROVED, POApprovalStatus.DECLINED]:
-                raise ValidationError("This step must be approved/accepted before submitting forward.")
-            
-        allowed_submitters = {
-            POStatus.REQUEST_FOR_PAYMENT: {"AccountingOfficer", "RVT"},
-            POStatus.PURCHASE_ORDER: {"AccountingOfficer", "RVT"},
-            POStatus.CHECK_CREATION: {"RVT"},
-            POStatus.PAYMENT_RELEASE: {"RVT"},
-            POStatus.PO_FILING: {"RVT"},
-        }
+        meta = PO_META.get(self.status)
+        if not meta:
+            raise ValidationError("Invalid PO state.")
 
-        if actor_role != "SUPERUSER" and actor_role not in allowed_submitters.get(self.status, set()):
+        # Approval gate
+        if meta.get("requires_approval") and self.approval_status != POApprovalStatus.APPROVED:
+            raise ValidationError("This step must be approved before proceeding.")
+
+        # Role gate
+        if meta["forward_roles"] and actor_role not in meta["forward_roles"] and actor_role != "SUPERUSER":
             raise PermissionDenied("You cannot submit this step.")
 
-
-        # Stage-specific preconditions
-        if self.status == POStatus.CHECK_CREATION:
-            if not (self.cheque_number or "").strip():
-                raise ValidationError("Cheque Number is required before submitting to Check Signing.")
+        # Business gate (Billing)
+        gate = meta.get("gate")
+        if gate == "billing_totals_match_and_paid":
+            ok, po_r, billed_r, reason = self.totals_match_and_paid()
+            if not ok:
+                raise ValidationError(
+                    f"Cannot proceed to PO Filing. {reason} "
+                    f"(PO Total ₱{po_r}, Billed ₱{billed_r})"
+                )
 
         nxt = self.next_status()
         if not nxt:
@@ -1448,112 +1508,55 @@ class PurchaseOrder(models.Model):
         self.approval_status = POApprovalStatus.PENDING
         self.save(update_fields=["status", "approval_status", "updated_at"])
 
-        message = self.log_update(user, f"Submitted forward to {nxt}.", user_notes=user_notes)
+        self.log_update(user, f"Submitted forward to {nxt}.", user_notes)
 
-    def approve_current_step(self, user, user_notes: str = "", simulated_role: str | None = None):
+    def approve_current_step(self, user, user_notes="", simulated_role=None):
         actor_role = self.resolve_actor_role(user, simulated_role)
-
         if not actor_role:
-            raise PermissionDenied("Your account does not have an assigned role.")
+            raise PermissionDenied("No role.")
 
         if self.approval_status != POApprovalStatus.PENDING:
-            raise ValidationError("This PO is not pending approval.")
+            raise ValidationError("Not pending approval.")
 
-        col = self.get_current_column()
+        meta = PO_META.get(self.status)
+        if not meta:
+            raise ValidationError("Invalid PO state.")
 
-        approver_roles = {
-            "REQUEST_FOR_PAYMENT": {"AccountingHead","TopManagement"},
-            "PURCHASE_ORDER": {"TopManagement"},
-            "CHECK_CREATION": {"TopManagement"},
-            "CHECK_SIGNING": {"TopManagement"},
-            "PAYMENT_RELEASE": {"TopManagement", "AccountingHead"},
-            "PO_FILING": {"TopManagement", "AccountingHead", "AccountingOfficer"},
-        }
+        if actor_role not in meta["approver_roles"] and actor_role != "SUPERUSER":
+            raise PermissionDenied("Not allowed to approve this step.")
 
-        # superuser / top management simulation allowance stays via is_top_management() like DR
-        allowed = set(approver_roles.get(col, set()))
-        if actor_role != "SUPERUSER" and actor_role not in allowed:
-            raise PermissionDenied(f"Role {actor_role} is not allowed to approve in {col}.")
-        
-        if col == POStatus.PURCHASE_ORDER:
-            bad_lines = self.particulars.filter(
-                models.Q(quantity__isnull=True) |
-                models.Q(unit_price__isnull=True)
-            )
-            if bad_lines.exists():
-                raise ValidationError(
-                    "All particulars must have quantity and unit price before approving Purchase Order."
-                )
-                # === RFP Approval → Move to Purchase Order ===
-        if self.status == POStatus.REQUEST_FOR_PAYMENT_APPROVAL:
-            self.status = POStatus.PURCHASE_ORDER
-            self.approval_status = POApprovalStatus.APPROVED
-            self.save(update_fields=["status", "approval_status", "updated_at"])
-            message = self.log_update(user, "RFP approved. Moved to Purchase Order.")
-            return
-
-        if col == POStatus.PURCHASE_ORDER_APPROVAL:
+        # Side effects
+        if meta.get("side_effect") == "generate_po_number":
             self.po_number = PurchaseOrder.get_next_po_number()
-            self.status = POStatus.CHECK_CREATION
-            message = self.log_update(user, "PO Created. Moved to Purchase Check Creation.")
+
+        next_status = meta.get("on_approve")
+        if next_status:
+            self.status = next_status
 
         self.approval_status = POApprovalStatus.APPROVED
         self.save(update_fields=["status", "po_number", "approval_status", "updated_at"])
 
-        self.log_update(user=user, message=f"Approved in column {col} as {actor_role}.",)
-    def decline_current_step(self, user, user_notes: str = "", simulated_role: str | None = None):
+        self.log_update(user, f"Approved in {meta['label']}.", user_notes)
+    def decline_current_step(self, user, user_notes="", simulated_role=None):
         actor_role = self.resolve_actor_role(user, simulated_role)
-
-
         if not actor_role:
-            raise PermissionDenied("Your account does not have an assigned role.")
-        if self.approval_status != POApprovalStatus.PENDING:
-            raise ValidationError("This PO is not pending approval.")
+            raise PermissionDenied("No role.")
 
-        current_column = self.get_current_column()
+        meta = PO_META.get(self.status)
+        if actor_role not in meta.get("decliner_roles", set()):
+            raise PermissionDenied("Not allowed to decline.")
 
-        decliner_roles = {
-            POStatus.REQUEST_FOR_PAYMENT_APPROVAL: {"RVT"},
-            POStatus.PURCHASE_ORDER_APPROVAL: {"JGG"},
-            POStatus.CHECK_SIGNING: {"AGR"},
-            POStatus.PAYMENT_RELEASE: {"RVT"},
-            POStatus.PO_FILING: {"RVT"},
-        }
-
-
-        allowed = set(decliner_roles.get(current_column, set()))
-        if actor_role not in allowed:
-            raise PermissionDenied(f"Role {actor_role} is not allowed to decline in {current_column}.")
-        
-        if current_column == POStatus.REQUEST_FOR_PAYMENT_APPROVAL:
-            message = self.log_update(user, "Declined at RFP Approval. PO deleted.")
+        if self.status == POStatus.REQUEST_FOR_PAYMENT_APPROVAL:
+            self.log_update(user, "Declined at RFP Approval. PO deleted.", user_notes)
             self.delete()
             return
 
-        # decline behavior: same pattern as DR
-        if current_column == "REQUEST_FOR_PAYMENT":
-            # stay, mark declined
-            self.approval_status = POApprovalStatus.DECLINED
-            self.save(update_fields=["approval_status", "updated_at"])
-            message = self.log_update(
-                user=user,
-                message=f"Declined in REQUEST_FOR_PAYMENT as {actor_role}. Returned for clarification.",
-                user_notes=user_notes,
-            )
-            return
-
-        # move back one column, mark declined
-        idx = PO_COLUMN_INDEX[current_column]
-        prev_column = PO_FLOW[idx - 1]
-        self.status = prev_column
+        prev = self.prev_status()
+        self.status = prev
         self.approval_status = POApprovalStatus.DECLINED
         self.save(update_fields=["status", "approval_status", "updated_at"])
 
-        message = self.log_update(
-            user=user,
-            message=f"Declined in {current_column} as {actor_role}. Moved back to {prev_column}.",
-            user_notes=user_notes,
-        )
+        self.log_update(user, f"Declined. Moved back to {prev}.", user_notes)
 
     @classmethod
     def get_next_po_number(cls):
@@ -1595,6 +1598,30 @@ class PurchaseOrder(models.Model):
 
         return f"{prefix}{next_seq:04d}"
         
+    def billed_total(self):
+        return self.billings.filter(is_cancelled=False).aggregate(sum=Sum("amount"))["sum"] or 0
+
+    def balance_amount(self):
+        return (self.total or 0) - self.billed_total()
+
+    def totals_match_and_paid(self):
+        """
+        Option B rule:
+        - billed total == particulars total (rounded)
+        - AND all billings are PAID (excluding cancelled)
+        """
+        q = Decimal("0.01")
+        po_total = Decimal(self.total or 0).quantize(q, rounding=ROUND_HALF_UP)
+        billed = Decimal(self.billed_total() or 0).quantize(q, rounding=ROUND_HALF_UP)
+
+        if po_total != billed:
+            return False, po_total, billed, "Totals do not match."
+
+        not_paid = self.billings.filter(is_cancelled=False).exclude(status=BillingStatus.PAID).exists()
+        if not_paid:
+            return False, po_total, billed, "Not all billings are PAID."
+
+        return True, po_total, billed, ""
 
 
 class PurchaseOrderParticular(models.Model):
@@ -1642,3 +1669,64 @@ class PurchaseOrderUpdate(models.Model):
 
     def __str__(self):
         return f"Update for PO #{self.purchase_order_id} at {self.timestamp}"
+
+class BillingStatus(models.TextChoices):
+    CHECK_CREATION = "CHECK_CREATION", "Check Creation"
+    CHECK_SIGNING = "CHECK_SIGNING", "Check Signing"
+    PAYMENT_RELEASE = "PAYMENT_RELEASE", "Payment Release"
+    PAID = "PAID", "Paid"
+
+
+class Billing(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    billing_number = models.CharField(
+        max_length=20,
+        unique=True,
+        editable=False,
+    )
+
+    source_po = models.ForeignKey(
+        "PurchaseOrder",
+        related_name="billings",
+        on_delete=models.CASCADE,
+    )
+
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+
+    cheque_number = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+    )
+
+    status = models.CharField(
+        max_length=30,
+        choices=BillingStatus.choices,
+        default=BillingStatus.CHECK_CREATION,
+    )
+
+    is_cancelled = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        if not self.billing_number:
+            self.billing_number = Billing.get_next_billing_number()
+        super().save(*args, **kwargs)
+
+    @staticmethod
+    def get_next_billing_number():
+        year = timezone.now().year
+        last = (
+            Billing.objects
+            .filter(billing_number__startswith=f"B-{year}")
+            .order_by("-billing_number")
+            .first()
+        )
+        next_seq = 1 if not last else int(last.billing_number.split("-")[-1]) + 1
+        return f"B-{year}-{next_seq:04d}"
+    
+PO_CANCEL_ROLES = {"RVT"}
+
+def can_cancel_po(user):
+    role = get_user_role(user)
+    return user.is_superuser or role in PO_CANCEL_ROLES
