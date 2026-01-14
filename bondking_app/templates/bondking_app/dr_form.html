@@ -1058,6 +1058,33 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 });
 </script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const deliveryMethodSelect = document.querySelector('select[name="delivery_method"]');
+  const deliveryDateInput = document.querySelector('input[name="date_of_delivery"]');
+
+  if (!deliveryMethodSelect || !deliveryDateInput) return;
+
+  function toggleDeliveryDate() {
+    const isD2D = deliveryMethodSelect.value === "DOOR_TO_DOOR";
+
+    if (isD2D) {
+      deliveryDateInput.disabled = false;
+    } else {
+      deliveryDateInput.value = "";
+      deliveryDateInput.disabled = true;
+    }
+  }
+
+  // Run on load (important for back/refresh)
+  toggleDeliveryDate();
+
+  // Run on change
+  deliveryMethodSelect.addEventListener("change", toggleDeliveryDate);
+});
+</script>
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   const input = document.getElementById("client-search");
