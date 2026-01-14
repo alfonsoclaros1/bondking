@@ -25,7 +25,10 @@ from bondking import settings
 from .models import (
     DR_STEP_META,
     PO_FLOW,
+    PO_META,
     ApprovalStatus,
+    Billing,
+    BillingStatus,
     Client,
     DeliveryMethod,
     DeliveryReceiptItem,
@@ -39,6 +42,7 @@ from .models import (
     KANBAN_COLUMNS,
     PaymentMethod,
     ProductID,
+    can_cancel_po,
     can_manage_inventory_issuance,
     get_effective_role,
     get_user_role,
@@ -50,6 +54,7 @@ from .models import (
     Product,
 )
 from .forms import (
+    BillingFormSet,
     ClientForm,
     DeliveryReceiptForm,
     DeliveryReceiptItemFormSet,
@@ -1301,12 +1306,11 @@ def po_create(request):
         POStatus.REQUEST_FOR_PAYMENT_APPROVAL,
         POStatus.PURCHASE_ORDER,
         POStatus.PURCHASE_ORDER_APPROVAL,
-        POStatus.CHECK_CREATION,
-        POStatus.CHECK_SIGNING,
-        POStatus.PAYMENT_RELEASE,
+        POStatus.BILLING,
         POStatus.PO_FILING,
         POStatus.ARCHIVED,
     ]
+
 
     current_status = POStatus.REQUEST_FOR_PAYMENT
 
@@ -1388,12 +1392,21 @@ def po_edit(request, pk):
         stage=stage,
         approval_status=po.approval_status,
     )
+    billing_formset = BillingFormSet(
+        request.POST or None,
+        instance=po,
+        prefix="billings",
+        stage=stage,
+        user=request.user,
+    )
 
     if request.method == "POST" and request.POST.get("action") == "save":
-        if form.is_valid() and formset.is_valid():
+        if form.is_valid() and formset.is_valid() and billing_formset.is_valid():
             form.save()
             formset.save()
+            billing_formset.save()
             return redirect("po-table")
+
 
     # ==========================
     # EDIT PERMISSIONS
@@ -1401,7 +1414,7 @@ def po_edit(request, pk):
     can_edit = stage in [
         POStatus.REQUEST_FOR_PAYMENT,
         POStatus.PURCHASE_ORDER,
-        POStatus.CHECK_CREATION,
+        POStatus.BILLING,
     ]
 
     # ==========================
@@ -1412,9 +1425,7 @@ def po_edit(request, pk):
         POStatus.REQUEST_FOR_PAYMENT_APPROVAL: ("RVT", "RFP is awaiting approval."),
         POStatus.PURCHASE_ORDER: ("RVT", "Purchase Order is being prepared."),
         POStatus.PURCHASE_ORDER_APPROVAL: ("JGG", "Purchase Order is awaiting approval."),
-        POStatus.CHECK_CREATION: ("RVT", "Cheque details are being prepared."),
-        POStatus.CHECK_SIGNING: ("AGR", "Cheque is awaiting signature."),
-        POStatus.PAYMENT_RELEASE: ("RVT", "Payment is ready for release."),
+        POStatus.BILLING: ("RVT / Accounting", "Create billings (partial payments) until totals match and all billings are PAID."),
         POStatus.PO_FILING: ("RVT", "PO is ready to be archived."),
         POStatus.ARCHIVED: (None, "This Purchase Order has been archived."),
     }
@@ -1429,9 +1440,6 @@ def po_edit(request, pk):
         POStatus.REQUEST_FOR_PAYMENT_APPROVAL,
         POStatus.PURCHASE_ORDER,
         POStatus.PURCHASE_ORDER_APPROVAL,
-        POStatus.CHECK_CREATION,
-        POStatus.CHECK_SIGNING,
-        POStatus.PAYMENT_RELEASE,
         POStatus.PO_FILING,
         POStatus.ARCHIVED,
     ]
@@ -1449,9 +1457,9 @@ def po_edit(request, pk):
     SUBMIT_LABELS = {
         POStatus.REQUEST_FOR_PAYMENT: "Submit RFP",
         POStatus.PURCHASE_ORDER: "Submit PO",
-        POStatus.CHECK_CREATION: "Submit Check",
-        POStatus.PAYMENT_RELEASE: "Confirm Payment",
+        POStatus.BILLING: "Proceed to PO Filing",
     }
+
 
     submit_label = SUBMIT_LABELS.get(stage, "Submit")
 
@@ -1470,43 +1478,39 @@ def po_edit(request, pk):
         POStatus.PAYMENT_RELEASE,
     }
 
+    role = get_user_role(request.user)
+    meta = PO_META.get(stage, {})
+
     can_submit = (
-        # Early stages: submit anytime
-        stage in EARLY_SUBMIT_STAGES
-
-        # Later stages: must already be approved
-        or (
-            stage in APPROVAL_REQUIRED_SUBMIT_STAGES
-            and po.approval_status == POApprovalStatus.APPROVED
-        )
-
+        not po.is_archived
+        and not po.is_cancelled
+        and (request.user.is_superuser or role in meta.get("forward_roles", set()))
+        and (not meta.get("requires_approval") or po.approval_status == POApprovalStatus.APPROVED)
     )
 
+    billed_total = po.billed_total()
+    balance = po.balance_amount()
     return render(request, "bondking_app/po_form.html", {
         "po": po,
         "form": form,
         "formset": formset,
         "updates": updates,
-
         "can_edit": can_edit,
         "can_submit":can_submit,
         "can_approve": po.approval_status == POApprovalStatus.PENDING and stage in [
             POStatus.REQUEST_FOR_PAYMENT_APPROVAL,
             POStatus.PURCHASE_ORDER_APPROVAL,
-            POStatus.CHECK_CREATION,
-            POStatus.CHECK_SIGNING,
-            POStatus.PAYMENT_RELEASE,
         ],
         "can_archive": stage == POStatus.PO_FILING,
-
         "next_actor": next_actor,
         "next_step_description": next_step_description,
-
         "po_flow": po_flow,
         "stage": stage,
         "is_create": False,
         "submit_label": submit_label,
-
+        "billing_formset": billing_formset,
+        "billed_total": billed_total,
+        "balance": balance,
     })
 
 
@@ -2174,7 +2178,8 @@ def po_table_export(request):
         "Status",
         "Approval Status",
         "Total",
-        "Cheque Number",
+        "Total Billed",
+        "Balance",
         "Created At",
         "Updated At",
         "Archived",
@@ -2192,7 +2197,8 @@ def po_table_export(request):
             po.status,
             po.approval_status,
             float(po.total or 0),
-            po.cheque_number,
+            float(po.billed_total() or 0),
+            float(po.balance_amount() or 0),
             excel_safe_datetime(po.created_at),
             excel_safe_datetime(po.updated_at),
             "Yes" if po.is_archived else "No",
@@ -2227,19 +2233,21 @@ def cancel_dr(request, pk):
 @require_POST
 @login_required
 def cancel_po(request, pk):
-    if not is_top_management(request.user):
-        raise PermissionDenied("Only Top Management can cancel POs.")
+    if not can_cancel_po(request.user):
+        raise PermissionDenied("Only RVT can cancel POs.")
 
     po = get_object_or_404(PurchaseOrder, pk=pk)
 
     po.is_cancelled = True
     po.is_archived = True
-    po.status = "ARCHIVED"
+    po.status = POStatus.ARCHIVED
     po.save(update_fields=["is_cancelled", "is_archived", "status", "updated_at"])
 
-    po.log_update(request.user, "Cancelled PO.")
-    return redirect("po-table")
+    # cancel all billings (not delete)
+    po.billings.update(is_cancelled=True)
 
+    po.log_update(request.user, "Cancelled PO (and cancelled all billings).")
+    return redirect("po-table")
 
 
 def compute_stock_snapshot():
@@ -2935,3 +2943,75 @@ def client_edit(request, pk):
         "client": client,
         "is_create": False,
     })
+
+@require_POST
+@login_required
+def billing_advance(request, pk):
+    billing = get_object_or_404(Billing, pk=pk)
+
+    po = billing.source_po
+    if po.is_archived or po.status == POStatus.ARCHIVED:
+        return JsonResponse({"ok": False, "error": "PO is archived."}, status=400)
+
+    # Only allow while PO is in BILLING stage
+    if po.status != POStatus.BILLING:
+        return JsonResponse({"ok": False, "error": "PO is not in Billing stage."}, status=400)
+
+    role = get_user_role(request.user)
+
+    # Status progression
+    order = [
+        BillingStatus.CHECK_CREATION,
+        BillingStatus.CHECK_SIGNING,
+        BillingStatus.PAYMENT_RELEASE,
+        BillingStatus.PAID,
+    ]
+    idx = order.index(billing.status) if billing.status in order else 0
+    current = order[idx]
+
+    # Who can advance each step
+    allowed = {
+        BillingStatus.CHECK_CREATION: {"RVT", "AccountingOfficer", "AccountingHead"},
+        BillingStatus.CHECK_SIGNING: {"AGR"},
+        BillingStatus.PAYMENT_RELEASE: {"RVT"},
+        BillingStatus.PAID: set(),
+    }
+
+    if request.user.is_superuser:
+        pass
+    else:
+        if role not in allowed.get(current, set()):
+            return JsonResponse({"ok": False, "error": "You are not allowed to proceed this billing."}, status=403)
+
+    if billing.is_cancelled:
+        return JsonResponse({"ok": False, "error": "Billing is cancelled."}, status=400)
+
+    if current == BillingStatus.PAID:
+        return JsonResponse({"ok": True, "status": billing.status, "label": billing.get_status_display()})
+
+    billing.status = order[idx + 1]
+    billing.save(update_fields=["status"])
+
+    po.log_update(request.user, f"Billing {billing.billing_number} advanced to {billing.get_status_display()}.")
+
+    return JsonResponse({"ok": True, "status": billing.status, "label": billing.get_status_display()})
+
+
+@require_POST
+@login_required
+def billing_cancel(request, pk):
+    billing = get_object_or_404(Billing, pk=pk)
+
+    if not can_cancel_po(request.user):
+        return JsonResponse({"ok": False, "error": "Only RVT can cancel billings."}, status=403)
+
+    if billing.is_cancelled:
+        return JsonResponse({"ok": True})
+
+    billing.is_cancelled = True
+    billing.save(update_fields=["is_cancelled"])
+
+    po = billing.source_po
+    po.log_update(request.user, f"Billing {billing.billing_number} was cancelled.")
+
+    return JsonResponse({"ok": True})

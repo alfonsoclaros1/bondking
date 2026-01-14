@@ -52,7 +52,6 @@ urlpatterns = [
     path("po/<int:pk>/edit/", views.po_edit, name="po-edit"),
     path("po/<int:pk>/submit/", views.po_submit, name="po-submit"),
     path("po/<int:pk>/complete/", views.po_complete, name="po-complete"),
-    path("po/<int:pk>/submit/", views.po_submit, name="po-submit"),
     path("po/<int:pk>/approve/", views.po_approve, name="po-approve"),
     path("po/<int:pk>/decline/", views.po_decline, name="po-decline"),
     path("po/<int:pk>/archive/", views.archive_po, name="po-archive"),
@@ -62,6 +61,9 @@ urlpatterns = [
     path("product-ids/quick-create/",views.product_id_quick_create,name="product-id-quick-create",),
     path("po/<int:pk>/print/", views.po_print, name="po-print"),
     path("api/po/filter-suggestions/", views.po_filter_suggestions_api, name="po-filter-suggestions"),
+    path("billing/<int:pk>/advance/", views.billing_advance, name="billing-advance"),
+    path("billing/<int:pk>/cancel/", views.billing_cancel, name="billing-cancel"),
+
 
     
     # Inventory

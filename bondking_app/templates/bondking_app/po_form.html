@@ -127,11 +127,6 @@
             <label class="form-label mb-1">PO Number</label>
             {{ form.po_number }}
           </div>
-
-          <div class="col-md-3">
-            <label class="form-label mb-1">Cheque No.</label>
-            {{ form.cheque_number }}
-          </div>
           <div class="col-md-4">
             <label class="form-label mb-1">Product ID</label>
 
@@ -220,6 +215,71 @@
           </div>
         </div>
 
+      </div>
+    </div>
+    <!-- BILLINGS -->
+    <div class="card mb-4">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
+        <strong>Billings</strong>
+        <div class="small text-muted">
+          Total Billed: ₱{{ billed_total|floatformat:2 }} |
+          Balance: ₱{{ balance|floatformat:2 }}
+        </div>
+      </div>
+
+      <div class="card-body">
+        {{ billing_formset.management_form }}
+
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th style="width:160px;">Billing #</th>
+                <th class="text-end" style="width:160px;">Amount</th>
+                <th style="width:200px;">Cheque #</th>
+                <th style="width:160px;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for f in billing_formset.forms %}
+                {{ f.id }}
+                <tr class="{% if f.instance.is_cancelled %}table-danger{% endif %}">
+                  <td>
+                    {% if f.instance.pk %}
+                      {{ f.instance.billing_number }}
+                    {% else %}
+                      <span class="text-muted">Auto</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">{{ f.amount }}</td>
+                  <td>{{ f.cheque_number }}</td>
+                  <td>
+                    <!-- clickable badge for modal -->
+                    {% if f.instance.pk %}
+                      <button
+                        type="button"
+                        class="btn btn-sm btn-outline-secondary billing-status-btn"
+                        data-billing-id="{{ f.instance.id }}"
+                        data-billing-number="{{ f.instance.billing_number }}"
+                        data-status="{{ f.instance.status }}"
+                        data-status-label="{{ f.instance.get_status_display }}"
+                        data-cancelled="{{ f.instance.is_cancelled|yesno:'1,0' }}"
+                      >
+                        {{ f.instance.get_status_display }}
+                      </button>
+                    {% else %}
+                      {{ f.status }}
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="small text-muted mt-2">
+          * BILLING → PO Filing requires: totals match (rounded) AND all billings are PAID.
+        </div>
       </div>
     </div>
 
@@ -336,6 +396,46 @@
     </div>
   </div>
 </div>
+<!-- Billing Status Modal -->
+<div class="modal fade" id="billingStatusModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow-sm">
+      <div class="modal-header">
+        <h5 class="modal-title">Billing Status</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="mb-2">
+          <div class="small text-muted">Billing</div>
+          <div class="fw-semibold" id="bm-number">—</div>
+        </div>
+
+        <div class="mb-3">
+          <div class="small text-muted">Current Status</div>
+          <div class="fw-semibold" id="bm-status">—</div>
+        </div>
+
+        <div class="alert alert-light border small mb-3" id="bm-message">
+          Awaiting …
+        </div>
+
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-primary btn-sm d-none" id="bm-proceed-btn">
+            Proceed to Next Status
+          </button>
+
+          <button type="button" class="btn btn-outline-danger btn-sm d-none" id="bm-cancel-btn">
+            Cancel Billing
+          </button>
+        </div>
+
+        <div class="text-danger small mt-2 d-none" id="bm-error"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -557,4 +657,103 @@ function formatPeso(value) {
 }
 
 </style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const modalEl = document.getElementById("billingStatusModal");
+  if (!modalEl) return;
+
+  const modal = new bootstrap.Modal(modalEl);
+  const numberEl = document.getElementById("bm-number");
+  const statusEl = document.getElementById("bm-status");
+  const msgEl = document.getElementById("bm-message");
+  const errEl = document.getElementById("bm-error");
+  const proceedBtn = document.getElementById("bm-proceed-btn");
+  const cancelBtn = document.getElementById("bm-cancel-btn");
+
+  // Role availability: server should render these booleans (we’ll add them in view if you want),
+  // but for now we rely on backend enforcing permissions.
+  // We still show/hide buttons based on status (and let backend decide final).
+  let currentBillingId = null;
+
+  function awaitingText(status){
+    // This is purely UI. Backend is authoritative.
+    if (status === "CHECK_CREATION") return "Awaiting RVT / Accounting to proceed.";
+    if (status === "CHECK_SIGNING") return "Awaiting AGR to proceed.";
+    if (status === "PAYMENT_RELEASE") return "Awaiting RVT to mark as Paid.";
+    if (status === "PAID") return "Billing is fully paid.";
+    return "Awaiting action.";
+  }
+
+  document.querySelectorAll(".billing-status-btn").forEach(btn => {
+    btn.addEventListener("click", function(){
+      errEl.classList.add("d-none");
+      errEl.textContent = "";
+      proceedBtn.classList.add("d-none");
+      cancelBtn.classList.add("d-none");
+
+      currentBillingId = this.dataset.billingId;
+      const billingNumber = this.dataset.billingNumber;
+      const status = this.dataset.status;
+      const statusLabel = this.dataset.statusLabel;
+      const cancelled = this.dataset.cancelled === "1";
+
+      numberEl.textContent = billingNumber || "—";
+      statusEl.textContent = statusLabel || status || "—";
+      msgEl.textContent = cancelled ? "Billing is cancelled." : awaitingText(status);
+
+      if (!cancelled && status !== "PAID") {
+        proceedBtn.classList.remove("d-none");
+      }
+
+      // Show cancel button always (backend will restrict to RVT)
+      if (!cancelled) {
+        cancelBtn.classList.remove("d-none");
+      }
+
+      modal.show();
+    });
+  });
+
+  proceedBtn?.addEventListener("click", async function(){
+    if (!currentBillingId) return;
+    errEl.classList.add("d-none");
+    try{
+      const res = await fetch(`/billing/${currentBillingId}/advance/`, {
+        method: "POST",
+        headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed to advance billing.");
+
+      // easiest: reload so badges reflect updated status
+      window.location.reload();
+    }catch(e){
+      errEl.textContent = e.message;
+      errEl.classList.remove("d-none");
+    }
+  });
+
+  cancelBtn?.addEventListener("click", async function(){
+    if (!currentBillingId) return;
+    if (!confirm("Cancel this billing?")) return;
+
+    errEl.classList.add("d-none");
+    try{
+      const res = await fetch(`/billing/${currentBillingId}/cancel/`, {
+        method: "POST",
+        headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed to cancel billing.");
+
+      window.location.reload();
+    }catch(e){
+      errEl.textContent = e.message;
+      errEl.classList.remove("d-none");
+    }
+  });
+});
+</script>
+
 {% endblock %}

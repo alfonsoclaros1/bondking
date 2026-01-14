@@ -193,10 +193,11 @@
             <tr class="po-row
               {% if po.is_cancelled %}table-danger
               {% elif po.is_archived %}table-success
-              {% elif po.status == 'CHECK_SIGNING' and user|has_group:'AGR' %}table-warning
+              {% elif po.status == 'BILLING' and user|has_group:'RVT' %}table-warning
+              {% elif po.status == 'BILLING' and user|has_group:'AccountingOfficer' %}table-warning
+              {% elif po.status == 'BILLING' and user|has_group:'AccountingHead' %}table-warning              
               {% elif po.status == 'PURCHASE_ORDER_APPROVAL' and user|has_group:'JGG' %}table-warning
               {% elif po.status == 'REQUEST_FOR_PAYMENT_APPROVAL' and user|has_group:'RVT' %}table-warning
-              {% elif po.status == 'CHECK_CREATION' and user|has_group:'RVT' %}table-warning
               {% elif po.status == 'PURCHASE_ORDER' and user|has_group:'RVT' %}table-warning
               {% endif %}
             ">

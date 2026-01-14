@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.core.validators import RegexValidator
 
 from .models import (
+    Billing,
     Client,
     InventoryIssuance,
     InventoryIssuanceItem,
@@ -269,6 +270,8 @@ class DeliveryReceiptForm(forms.ModelForm):
                 if stage == "DELIVERED":
                     self.fields["proof_of_delivery"].disabled = False
                     self.fields["sales_invoice_no"].disabled = False
+        elif stage == "FOR_DELIVERY":
+            self.fields["date_of_delivery"].disabled = False
 
         # ------------------------------------------------------------
         # 3. FOR_COUNTER_CREATION / COUNTERED
@@ -288,6 +291,10 @@ class DeliveryReceiptForm(forms.ModelForm):
                 for fname in ["payment_due", "payment_details", "sales_invoice_no"]:
                     if fname in self.fields:
                         self.fields[fname].disabled = False
+
+        elif stage == "FOR_COLLECTION":
+            # Allow payment details entry
+            self.fields["payment_details"].disabled = False
 
         # ------------------------------------------------------------
         # 5. FOR_DEPOSIT
@@ -426,7 +433,7 @@ from .models import PurchaseOrder, PurchaseOrderParticular, POStatus
 class PurchaseOrderForm(forms.ModelForm):
     class Meta:
         model = PurchaseOrder
-        fields = ["rfp_number","product_id_ref", "paid_to", "address", "date", "po_number", "cheque_number"]
+        fields = ["rfp_number","product_id_ref", "paid_to", "address", "date", "po_number"]
         widgets = {
             "paid_to": forms.TextInput(attrs={"class": "form-control"}),
             "address": forms.TextInput(attrs={"class": "form-control"}),
@@ -476,10 +483,6 @@ class PurchaseOrderForm(forms.ModelForm):
                 for fname in ["paid_to", "address", "date"]:
                     self.fields[fname].disabled = False
 
-        # CHECK_CREATION
-        elif self.stage == "CHECK_CREATION":
-            if role in {"AccountingOfficer", "AccountingHead", "TopManagement"} or (user and user.is_superuser):
-                self.fields["cheque_number"].disabled = False
         # Cancelled PO: lock everything
         if self.instance.pk and self.instance.is_cancelled:
             for field in self.fields.values():
@@ -496,8 +499,7 @@ class PurchaseOrderForm(forms.ModelForm):
         if not self.instance.pk:
             self.fields["rfp_number"].initial = PurchaseOrder.get_next_rfp_number()
 
-        if stage in ["REQUEST_FOR_PAYMENT_APPROVAL", "PURCHASE_ORDER_APPROVAL",
-             "CHECK_SIGNING", "PO_FILING", "ARCHIVED"]:
+        if stage in ["REQUEST_FOR_PAYMENT_APPROVAL", "PURCHASE_ORDER_APPROVAL", "PO_FILING", "BILLING" "ARCHIVED"]:
             for field in self.fields.values():
                 field.disabled = True
 
@@ -684,3 +686,67 @@ InventoryIssuanceItemFormSet = inlineformset_factory(
     can_delete=True,
 )
 
+class BillingForm(forms.ModelForm):
+    class Meta:
+        model = Billing
+        fields = ["amount", "cheque_number", "status"]
+        widgets = {
+            "billing_number": forms.TextInput(attrs={"class": "form-control text-muted"}),
+            "amount": forms.NumberInput(attrs={"class": "form-control text-end"}),
+            "cheque_number": forms.TextInput(attrs={"class": "form-control"}),
+            "status": forms.Select(attrs={"class": "form-select"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        self.stage = kwargs.pop("stage", None)
+        self.user = kwargs.pop("user", None)
+        super().__init__(*args, **kwargs)
+
+        # If billing is cancelled, lock
+        if self.instance.pk and getattr(self.instance, "is_cancelled", False):
+            for f in self.fields.values():
+                f.disabled = True
+            return
+
+        # Editable only in BILLING stage
+        editable = (self.stage == "BILLING")
+        if not editable:
+            for f in self.fields.values():
+                f.required = False
+                f.widget.attrs["readonly"] = True
+                f.widget.attrs["tabindex"] = "-1"
+                f.widget.attrs["style"] = "background:#f8f9fa;"
+            self.fields["status"].disabled = True
+
+
+class BaseBillingFormSet(BaseInlineFormSet):
+    def __init__(self, *args, **kwargs):
+        self.stage = kwargs.pop("stage", None)
+        self.user = kwargs.pop("user", None)
+        super().__init__(*args, **kwargs)
+
+        role = get_user_role(self.user) if self.user else None
+        can_add_rows = (
+            self.stage == "BILLING"
+            and (self.user and (self.user.is_superuser or role in {"RVT", "AccountingOfficer", "AccountingHead"}))
+        )
+
+        if not can_add_rows:
+            self.can_delete = False
+            self.extra = 0
+
+    def _construct_form(self, i, **kwargs):
+        kwargs["stage"] = self.stage
+        kwargs["user"] = self.user
+        return super()._construct_form(i, **kwargs)
+
+
+BillingFormSet = inlineformset_factory(
+    PurchaseOrder,
+    Billing,
+    form=BillingForm,
+    formset=BaseBillingFormSet,
+    fields=["amount", "cheque_number", "status"],
+    extra=3,
+    can_delete=True,
+)

@@ -1067,14 +1067,28 @@ document.addEventListener("DOMContentLoaded", function () {
   if (!deliveryMethodSelect || !deliveryDateInput) return;
 
   function toggleDeliveryDate() {
+    const stage = "{{ stage }}";
     const isD2D = deliveryMethodSelect.value === "DOOR_TO_DOOR";
 
-    if (isD2D) {
+    // FOR_DELIVERY: always editable
+    if (stage === "FOR_DELIVERY") {
       deliveryDateInput.disabled = false;
-    } else {
-      deliveryDateInput.value = "";
-      deliveryDateInput.disabled = true;
+      return;
     }
+
+    // NEW_DR behavior
+    if (stage === "NEW_DR") {
+      if (isD2D) {
+        deliveryDateInput.disabled = false;
+      } else {
+        deliveryDateInput.value = "";
+        deliveryDateInput.disabled = true;
+      }
+      return;
+    }
+
+    // All other stages: locked
+    deliveryDateInput.disabled = true;
   }
 
   // Run on load (important for back/refresh)
