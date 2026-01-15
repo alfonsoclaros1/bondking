@@ -40,6 +40,11 @@ CSRF_TRUSTED_ORIGINS = [
 
 
 
+CLOUDINARY_STORAGE = {
+    "CLOUD_NAME": "dotju4uip",
+    "API_KEY": "959791966863158",
+    "API_SECRET": "hIFsb6ixc4CWnLEERhHdz2K9Peo",
+}
 
 # Application definition
 
