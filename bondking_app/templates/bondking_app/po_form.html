@@ -82,7 +82,7 @@
 
     <!-- Next Step Card -->
     <div class="col-md-9">
-          {% if not is_create and po.status != 'REQUEST_FOR_PAYMENT' %}
+          {% if not is_create and po.status != 'PURCHASE_ORDER_CREATION' %}
       <div class="card mb-3
         {% if po.is_archived %}border-success
         {% elif po.approval_status == 'DECLINED' or po.is_cancelled %}border-danger
@@ -144,10 +144,6 @@
           <div class="col-md-2">
             <label class="form-label mb-1">Date</label>
             {{ form.date }}
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">RFP Number</label>
-            {{ form.rfp_number }}
           </div>
           <div class="col-md-3">
             <label class="form-label mb-1">PO Number</label>
@@ -286,6 +282,8 @@
                 <th style="width:200px;">Check #</th>
                 <th class="text-end" style="width:160px;">Amount</th>
                 <th style="width:160px;">Status</th>
+                <th style="width:120px;">Proof</th>
+
               </tr>
             </thead>
             <tbody id="billings-tbody">
@@ -319,6 +317,21 @@
                       <span class="text-muted">Check Creation</span>
                     {% endif %}
                   </td>
+                  <td>
+                    {% if f.instance.pk %}
+                      {% if f.instance.proof_of_payment %}
+                        <img
+                          src="{{ f.instance.proof_of_payment.url }}"
+                          class="img-thumbnail"
+                          style="max-height: 60px; cursor:pointer"
+                          data-bs-toggle="modal"
+                          data-bs-target="#popModal-{{ f.instance.pk }}"
+                        >
+                      {% else %}
+                        <span class="text-muted">—</span>
+                      {% endif %}
+                    {% endif %}
+                  </td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -343,7 +356,7 @@
       </button>
       {% if can_edit %}
       <button type="submit" name="action" value="save" class="btn btn-primary">
-        {% if is_create %}Create RFP{% else %}Save Changes{% endif %}
+        {% if is_create %}Create PO{% else %}Save Changes{% endif %}
       </button>
       {% endif %}
       {% if stage == "PO_FILING" %}
@@ -355,7 +368,7 @@
       </form>
       {% endif %}
     </div>
-    {% if not is_create and po.approval_status == "APPROVED" and stage != "REQUEST_FOR_PAYMENT" and stage != "REQUEST_FOR_PAYMENT_APPROVAL" %}
+    {% if not is_create %}
       <a class="btn btn-outline-dark" href="{% url 'po-print' po.id %}" target="_blank">
         Print PO
       </a>
@@ -467,6 +480,17 @@
         <div class="alert alert-light border small mb-3" id="bm-message">
           Awaiting …
         </div>
+        <div class="mb-3 d-none" id="bm-proof-row">
+          <label class="form-label fw-semibold">
+            Proof of Payment <span class="text-danger">*</span>
+          </label>
+          <input
+            type="file"
+            class="form-control"
+            id="bm-proof-input"
+            accept="image/*"
+          >
+        </div>
 
         <div class="d-flex gap-2">
           <button
@@ -492,6 +516,25 @@
     </div>
   </div>
 </div>
+{% for f in billing_formset.forms %}
+  {% if f.instance.pk %}
+  <div class="modal fade" id="popModal-{{ f.instance.pk }}" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Proof of Payment</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body text-center">
+          {% if f.instance.proof_of_payment %}
+            <img src="{{ f.instance.proof_of_payment.url }}" class="img-fluid rounded">
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+{% endfor %}
 
 {% endblock %}
 
@@ -741,13 +784,25 @@ document.addEventListener("DOMContentLoaded", function () {
   let currentBillingId = null;
 
   function awaitingText(status){
-    // This is purely UI. Backend is authoritative.
+    const proofRow = document.getElementById("bm-proof-row");
+    const proofInput = document.getElementById("bm-proof-input");
+
+    // reset first
+    proofRow.classList.add("d-none");
+    proofInput.value = "";
+
+    if (status === "PAYMENT_RELEASE") {
+      proofRow.classList.remove("d-none");
+      return "Awaiting RVT to mark as Paid (proof required).";
+    }
+
     if (status === "CHECK_CREATION") return "Awaiting RVT / Accounting to proceed.";
     if (status === "CHECK_SIGNING") return "Awaiting AGR to proceed.";
-    if (status === "PAYMENT_RELEASE") return "Awaiting RVT to mark as Paid.";
     if (status === "PAID") return "Billing is fully paid.";
+
     return "Awaiting action.";
   }
+
   const BILLING_STATUS_LABELS = {
     CHECK_CREATION: "Complete Check Creation",
     PAYMENT_RELEASE: "Complete Payment Release",
@@ -802,10 +857,21 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!currentBillingId) return;
     errEl.classList.add("d-none");
     try{
+      const proofInput = document.getElementById("bm-proof-input");
+
+      const fd = new FormData();
+      if (proofInput && proofInput.files.length > 0) {
+        fd.append("proof_of_payment", proofInput.files[0]);
+      }
+
       const res = await fetch(`/billing/${currentBillingId}/advance/`, {
         method: "POST",
-        headers: { "X-CSRFToken": "{{ csrf_token }}" },
+        headers: {
+          "X-CSRFToken": "{{ csrf_token }}"
+        },
+        body: fd,
       });
+
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Failed to advance billing.");
 

@@ -1279,14 +1279,13 @@ def po_create(request):
         raise PermissionDenied("You are not allowed to create a PO.")
 
     if request.method == "POST":
-        form = PurchaseOrderForm(request.POST, stage="REQUEST_FOR_PAYMENT", user=request.user)
-        formset = PurchaseOrderParticularFormSet(request.POST, prefix="parts", stage="REQUEST_FOR_PAYMENT")
+        form = PurchaseOrderForm(request.POST, stage="PURCHASE_ORDER_CREATION", user=request.user)
+        formset = PurchaseOrderParticularFormSet(request.POST, prefix="parts", stage="PURCHASE_ORDER_CREATION")
         if form.is_valid() and formset.is_valid():
             po = form.save(commit=False)
             po.prepared_by = request.user
-            po.status = POStatus.REQUEST_FOR_PAYMENT_APPROVAL
+            po.status = POStatus.PURCHASE_ORDER_APPROVAL
             po.approval_status = "PENDING"
-            po.rfp_number = PurchaseOrder.get_next_rfp_number()
             po.po_number = None
             po.save()
             formset.instance = po
@@ -1299,12 +1298,10 @@ def po_create(request):
             print("FORMSET ERRORS:", formset.errors)
 
     else:
-        form = PurchaseOrderForm(stage="REQUEST_FOR_PAYMENT", user=request.user)
-        formset = PurchaseOrderParticularFormSet(prefix="parts", stage="REQUEST_FOR_PAYMENT")
+        form = PurchaseOrderForm(stage="PURCHASE_ORDER_CREATION", user=request.user)
+        formset = PurchaseOrderParticularFormSet(prefix="parts", stage="PURCHASE_ORDER_CREATION")
     PO_FLOW = [
-        POStatus.REQUEST_FOR_PAYMENT,
-        POStatus.REQUEST_FOR_PAYMENT_APPROVAL,
-        POStatus.PURCHASE_ORDER,
+        POStatus.PURCHASE_ORDER_CREATION,
         POStatus.PURCHASE_ORDER_APPROVAL,
         POStatus.BILLING,
         POStatus.PO_FILING,
@@ -1312,7 +1309,7 @@ def po_create(request):
     ]
 
 
-    current_status = POStatus.REQUEST_FOR_PAYMENT
+    current_status = POStatus.PURCHASE_ORDER_CREATION
 
     po_flow = []
     for idx, code in enumerate(PO_FLOW):
@@ -1327,7 +1324,7 @@ def po_create(request):
         "po": None,
         "form": form,
         "formset": formset,
-        "stage": "REQUEST_FOR_PAYMENT",
+        "stage": "PURCHASE_ORDER_CREATION",
         "is_create": True,
         "updates": [],
         "po_flow": po_flow,
@@ -1461,8 +1458,7 @@ def po_edit(request, pk):
     # EDIT PERMISSIONS
     # ==========================
     can_edit = stage in [
-        POStatus.REQUEST_FOR_PAYMENT,
-        POStatus.PURCHASE_ORDER,
+        POStatus.PURCHASE_ORDER_CREATION,
         POStatus.BILLING,
     ]
 
@@ -1470,9 +1466,7 @@ def po_edit(request, pk):
     # NEXT STEP CARD
     # ==========================
     NEXT_STEP_META = {
-        POStatus.REQUEST_FOR_PAYMENT: ("RVT", "Accounting prepares and submits the Request for Payment."),
-        POStatus.REQUEST_FOR_PAYMENT_APPROVAL: ("RVT", "RFP is awaiting approval."),
-        POStatus.PURCHASE_ORDER: ("RVT", "Purchase Order is being prepared."),
+        POStatus.PURCHASE_ORDER_CREATION: ("RVT", "Accounting prepares and submits the Purchase Order."),
         POStatus.PURCHASE_ORDER_APPROVAL: ("JGG", "Purchase Order is awaiting approval."),
         POStatus.BILLING: ("RVT / Accounting", "Create billings (partial payments) until totals match and all billings are PAID."),
         POStatus.PO_FILING: ("RVT", "PO is ready to be archived."),
@@ -1485,9 +1479,7 @@ def po_edit(request, pk):
     # PO LIFECYCLE (SINGLE SOURCE)
     # ==========================
     PO_FLOW = [
-        POStatus.REQUEST_FOR_PAYMENT,
-        POStatus.REQUEST_FOR_PAYMENT_APPROVAL,
-        POStatus.PURCHASE_ORDER,
+        POStatus.PURCHASE_ORDER_CREATION,
         POStatus.PURCHASE_ORDER_APPROVAL,
         POStatus.BILLING,
         POStatus.PO_FILING,
@@ -1505,8 +1497,7 @@ def po_edit(request, pk):
             "is_done": idx < current_index,
         })
     SUBMIT_LABELS = {
-        POStatus.REQUEST_FOR_PAYMENT: "Submit RFP",
-        POStatus.PURCHASE_ORDER: "Submit PO",
+        POStatus.PURCHASE_ORDER_CREATION: "Submit PO",
         POStatus.BILLING: "Proceed to PO Filing",
     }
 
@@ -1518,8 +1509,7 @@ def po_edit(request, pk):
     # --------------------------
 
     EARLY_SUBMIT_STAGES = {
-        POStatus.REQUEST_FOR_PAYMENT,
-        POStatus.PURCHASE_ORDER,
+        POStatus.PURCHASE_ORDER_CREATION,
     }
 
     APPROVAL_REQUIRED_SUBMIT_STAGES = {
@@ -1626,7 +1616,6 @@ def po_edit(request, pk):
         "can_edit": can_edit,
         "can_submit":can_submit,
         "can_approve": po.approval_status == POApprovalStatus.PENDING and stage in [
-            POStatus.REQUEST_FOR_PAYMENT_APPROVAL,
             POStatus.PURCHASE_ORDER_APPROVAL,
         ],
         "can_archive": stage == POStatus.PO_FILING,
@@ -1951,7 +1940,7 @@ def po_filter_suggestions_api(request):
             "label": p,
         })
 
-    # ---- PO / RFP numbers ----
+    # ---- PO numbers ----
     po_nums = (
         PurchaseOrder.objects
         .exclude(po_number__isnull=True)
@@ -1965,23 +1954,6 @@ def po_filter_suggestions_api(request):
         results.append({
             "type": "po_number",
             "badge": "PO #",
-            "value": n,
-            "label": n,
-        })
-
-    rfp_nums = (
-        PurchaseOrder.objects
-        .exclude(rfp_number__isnull=True)
-        .exclude(rfp_number__exact="")
-        .filter(rfp_number__icontains=q)
-        .values_list("rfp_number", flat=True)
-        .distinct()
-        .order_by("rfp_number")[:10]
-    )
-    for n in rfp_nums:
-        results.append({
-            "type": "rfp_number",
-            "badge": "RFP #",
             "value": n,
             "label": n,
         })
@@ -2946,12 +2918,6 @@ def dr_print(request, pk):
 def po_print(request, pk):
     po = get_object_or_404(PurchaseOrder, pk=pk)
 
-    if po.status == "REQUEST_FOR_PAYMENT_APPROVAL":
-        return HttpResponse("PO not printable yet.", status=400)
-
-    if po.approval_status != "APPROVED":
-        return HttpResponse("Only approved POs can be printed.", status=400)
-
     items = po.particulars.all()
 
     html = render_to_string(
@@ -3097,7 +3063,12 @@ def billing_advance(request, pk):
         return JsonResponse({"ok": False, "error": "PO is not in Billing stage."}, status=400)
 
     role = get_user_role(request.user)
-
+    # =========================
+    # SAVE PROOF OF PAYMENT IF SENT
+    # =========================
+    if "proof_of_payment" in request.FILES:
+        billing.proof_of_payment = request.FILES["proof_of_payment"]
+        billing.save(update_fields=["proof_of_payment"])
     # Status progression
     order = [
         BillingStatus.CHECK_CREATION,
@@ -3107,6 +3078,20 @@ def billing_advance(request, pk):
     ]
     idx = order.index(billing.status) if billing.status in order else 0
     current = order[idx]
+    # =========================
+    # ENFORCE PROOF OF PAYMENT
+    # =========================
+    next_status = order[idx + 1] if idx + 1 < len(order) else None
+
+    if next_status == BillingStatus.PAID:
+        if not billing.proof_of_payment:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "error": "Proof of payment is required before releasing payment."
+                },
+                status=400
+            )
 
     # Who can advance each step
     allowed = {

@@ -436,7 +436,7 @@ from .models import PurchaseOrder, PurchaseOrderParticular, POStatus
 class PurchaseOrderForm(forms.ModelForm):
     class Meta:
         model = PurchaseOrder
-        fields = ["rfp_number","product_id_ref", "paid_to", "address", "date", "po_number"]
+        fields = ["product_id_ref", "paid_to", "address", "date", "po_number"]
         widgets = {
             "paid_to": forms.TextInput(attrs={"class": "form-control"}),
             "address": forms.TextInput(attrs={"class": "form-control"}),
@@ -445,8 +445,6 @@ class PurchaseOrderForm(forms.ModelForm):
                 "class": "form-control text-muted",
                 "placeholder": "Generated upon PO Approval",
             }),
-            "rfp_number": forms.TextInput(attrs={"class": "form-control text-muted",}),
-
             "cheque_number": forms.TextInput(attrs={"class": "form-control"}),
 
             "product_id_ref": forms.Select(attrs={"class": "form-select"}),
@@ -456,7 +454,7 @@ class PurchaseOrderForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         self.user = user
-        self.stage = stage or "REQUEST_FOR_PAYMENT"
+        self.stage = stage or "PURCHASE_ORDER_CREATION"
         role = get_user_role(user) if user else None
         
 
@@ -473,15 +471,12 @@ class PurchaseOrderForm(forms.ModelForm):
         # PO number: system-generated, never editable
         self.fields["po_number"].disabled = True
         self.fields["po_number"].required = False
-        self.fields["rfp_number"].disabled = True
-        self.fields["rfp_number"].required = False
         self.fields["product_id_ref"].required = True
 
         # -------------------------------------------------
         # 3. Stage-based rules
         # -------------------------------------------------
-        # REQUEST_FOR_PAYMENT
-        if self.stage == "REQUEST_FOR_PAYMENT":
+        if self.stage == "PURCHASE_ORDER_CREATION":
             if role in {"AccountingOfficer", "AccountingHead", "TopManagement"} or (user and user.is_superuser):
                 for fname in ["paid_to", "address", "date"]:
                     self.fields[fname].disabled = False
@@ -499,10 +494,7 @@ class PurchaseOrderForm(forms.ModelForm):
             # allow selection on create
             self.fields["product_id_ref"].disabled = False
 
-        if not self.instance.pk:
-            self.fields["rfp_number"].initial = PurchaseOrder.get_next_rfp_number()
-
-        if stage in ["REQUEST_FOR_PAYMENT_APPROVAL", "PURCHASE_ORDER_APPROVAL", "PO_FILING", "BILLING" "ARCHIVED"]:
+        if stage in ["PURCHASE_ORDER_APPROVAL", "PO_FILING", "BILLING" "ARCHIVED"]:
             for field in self.fields.values():
                 field.disabled = True
 
@@ -525,14 +517,11 @@ class PurchaseOrderParticularForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
-        self.stage = kwargs.pop("stage", "REQUEST_FOR_PAYMENT")
+        self.stage = kwargs.pop("stage", "PURCHASE_ORDER_CREATION")
         self.approval_status = kwargs.pop("approval_status", None)
         super().__init__(*args, **kwargs)
 
-        editable = self.stage in {
-            POStatus.REQUEST_FOR_PAYMENT,
-            POStatus.PURCHASE_ORDER,
-        }
+        editable = self.stage in [POStatus.PURCHASE_ORDER_CREATION]
         if not editable:
             for field in self.fields.values():
                 field.required = False
@@ -543,14 +532,14 @@ class PurchaseOrderParticularForm(forms.ModelForm):
 
 class BasePurchaseOrderParticularFormSet(BaseInlineFormSet):
     def __init__(self, *args, **kwargs):
-        self.stage = kwargs.pop("stage", "REQUEST_FOR_PAYMENT")
+        self.stage = kwargs.pop("stage", "PURCHASE_ORDER_CREATION")
         self.approval_status = kwargs.pop("approval_status", None)
         super().__init__(*args, **kwargs)
 
         # Control add/delete only
         if not (
-            self.stage == "REQUEST_FOR_PAYMENT"
-            or (self.stage == "PURCHASE_ORDER" and self.approval_status == "PENDING")
+            self.stage == "PURCHASE_ORDER_CREATION"
+            or (self.stage == "PURCHASE_ORDER_CREATION" and self.approval_status == "PENDING")
         ):
             self.can_delete = False
             self.extra = 0
@@ -561,8 +550,8 @@ class BasePurchaseOrderParticularFormSet(BaseInlineFormSet):
             form.approval_status = self.approval_status
 
             if not (
-                self.stage == "REQUEST_FOR_PAYMENT"
-                or (self.stage == "PURCHASE_ORDER" and self.approval_status == "PENDING")
+                self.stage == "PURCHASE_ORDER_CREATION"
+                or (self.stage == "PURCHASE_ORDER_CREATION" and self.approval_status == "PENDING")
             ):
                 for field in form.fields.values():
                     field.required = False
@@ -692,7 +681,7 @@ InventoryIssuanceItemFormSet = inlineformset_factory(
 class BillingForm(forms.ModelForm):
     class Meta:
         model = Billing
-        fields = [ "amount", "check_number"]
+        fields = [ "amount", "check_number", "proof_of_payment"]
         widgets = {
             "amount": forms.NumberInput(attrs={"class": "form-control text-end"}),
             "check_number": forms.TextInput(attrs={"class": "form-control"}),
@@ -722,6 +711,11 @@ class BillingForm(forms.ModelForm):
         # superuser override
         if self.user and self.user.is_superuser:
             editable = True
+
+        if "proof_of_payment" in self.fields:
+            if self.instance.pk:
+                if self.instance.status != BillingStatus.PAYMENT_RELEASE:
+                    self.fields["proof_of_payment"].disabled = True
 
         # ---- EXPLICIT FIELD CONTROL (NO LEAKS) ----
         self._apply_editability(editable)
@@ -775,7 +769,7 @@ BillingFormSet = inlineformset_factory(
     Billing,
     form=BillingForm,
     formset=BaseBillingFormSet,
-    fields=("check_number", "amount"),  # 🔑 EXPLICIT FIELDS
+    fields=("check_number", "amount", "proof_of_payment"),
     extra=0,
     can_delete=True,
 )

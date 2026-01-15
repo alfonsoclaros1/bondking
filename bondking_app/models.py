@@ -130,10 +130,8 @@ class InventoryIssuanceType(models.TextChoices):
     DELIVERED = "DELIVERED", "Delivered"
 
 class POStatus(models.TextChoices):
-    REQUEST_FOR_PAYMENT = "REQUEST_FOR_PAYMENT", "Request for Payment"
-    REQUEST_FOR_PAYMENT_APPROVAL = "REQUEST_FOR_PAYMENT_APPROVAL", "Request for Payment (Approval)"
-    PURCHASE_ORDER = "PURCHASE_ORDER", "Purchase Order"
-    PURCHASE_ORDER_APPROVAL = "PURCHASE_ORDER_APPROVAL", "Purchase Order (Approval)"
+    PURCHASE_ORDER_CREATION = "PURCHASE_ORDER_CREATION", "Purchase Order Creation"
+    PURCHASE_ORDER_APPROVAL = "PURCHASE_ORDER_APPROVAL", "Purchase Order Approval"
     BILLING = "BILLING", "Billing"
     PO_FILING = "PO_FILING", "PO Filing"
     ARCHIVED = "ARCHIVED", "Archived"
@@ -164,9 +162,7 @@ KANBAN_COLUMNS = [
 COLUMN_INDEX = {col: idx for idx, col in enumerate(KANBAN_COLUMNS)}
 
 PO_FLOW = [
-    "REQUEST_FOR_PAYMENT",
-    "REQUEST_FOR_PAYMENT_APPROVAL",
-    "PURCHASE_ORDER",
+    "PURCHASE_ORDER_CREATION",
     "PURCHASE_ORDER_APPROVAL",
     "BILLING",
     "PO_FILING",
@@ -1287,26 +1283,9 @@ class DeliveryReceiptUpdate(models.Model):
 
 
 PO_META = {
-    POStatus.REQUEST_FOR_PAYMENT: {
-        "label": "Request for Payment",
-        "forward_roles": {"AccountingOfficer", "RVT"},
-        "approver_roles": set(),
-        "decliner_roles": set(),
-        "requires_approval": False,
-        "on_approve": None,
-    },
 
-    POStatus.REQUEST_FOR_PAYMENT_APPROVAL: {
-        "label": "Request for Payment Approval",
-        "forward_roles": set(),
-        "approver_roles": {"AccountingHead", "TopManagement"},
-        "decliner_roles": {"RVT"},
-        "requires_approval": True,
-        "on_approve": POStatus.PURCHASE_ORDER,
-    },
-
-    POStatus.PURCHASE_ORDER: {
-        "label": "Purchase Order",
+    POStatus.PURCHASE_ORDER_CREATION: {
+        "label": "Purchase Order Creation",
         "forward_roles": {"AccountingOfficer", "RVT"},
         "approver_roles": set(),
         "decliner_roles": set(),
@@ -1359,7 +1338,7 @@ class PurchaseOrder(models.Model):
     status = models.CharField(
         max_length=30,
         choices=POStatus.choices,
-        default=POStatus.REQUEST_FOR_PAYMENT,
+        default=POStatus.PURCHASE_ORDER_CREATION,
     )
 
     approval_status = models.CharField(
@@ -1406,12 +1385,6 @@ class PurchaseOrder(models.Model):
         unique=True,
         null=True,
         blank=True,
-    )
-    rfp_number = models.CharField(
-        max_length=20,
-        unique=True,
-        blank=True,
-        null=True,
     )
     product_id_ref = models.ForeignKey(
         ProductID,
@@ -1551,10 +1524,6 @@ class PurchaseOrder(models.Model):
         if actor_role not in meta.get("decliner_roles", set()):
             raise PermissionDenied("Not allowed to decline.")
 
-        if self.status == POStatus.REQUEST_FOR_PAYMENT_APPROVAL:
-            self.log_update(user, "Declined at RFP Approval. PO deleted.", user_notes)
-            self.delete()
-            return
 
         prev = self.prev_status()
         self.status = prev
@@ -1583,26 +1552,6 @@ class PurchaseOrder(models.Model):
 
         return f"{prefix}{next_seq:04d}"
 
-    @classmethod
-    def get_next_rfp_number(cls):
-        year = timezone.now().year
-        prefix = f"RFP-{year}-"
-
-        last = (
-            cls.objects
-            .filter(rfp_number__startswith=prefix)
-            .order_by("-rfp_number")
-            .first()
-        )
-
-        if last and last.rfp_number:
-            last_seq = int(last.rfp_number.split("-")[-1])
-            next_seq = last_seq + 1
-        else:
-            next_seq = 1
-
-        return f"{prefix}{next_seq:04d}"
-        
     def billed_total(self):
         return self.billings.filter(is_cancelled=False).aggregate(sum=Sum("amount"))["sum"] or 0
 
@@ -1712,6 +1661,12 @@ class Billing(models.Model):
     )
 
     is_cancelled = models.BooleanField(default=False)
+    proof_of_payment = models.ImageField(
+        upload_to="billing/proof_of_payment/",
+        blank=True,
+        null=True,
+    )
+
 
     def save(self, *args, **kwargs):
         if not self.billing_number:

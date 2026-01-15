@@ -229,8 +229,7 @@
               {% elif po.status == 'BILLING' and user|has_group:'AccountingOfficer' %}table-warning
               {% elif po.status == 'BILLING' and user|has_group:'AccountingHead' %}table-warning              
               {% elif po.status == 'PURCHASE_ORDER_APPROVAL' and user|has_group:'JGG' %}table-warning
-              {% elif po.status == 'REQUEST_FOR_PAYMENT_APPROVAL' and user|has_group:'RVT' %}table-warning
-              {% elif po.status == 'PURCHASE_ORDER' and user|has_group:'RVT' %}table-warning
+              {% elif po.status == 'PURCHASE_ORDER_CREATION' and user|has_group:'RVT' %}table-warning
               {% endif %}
             ">
               <td class="ps-3">
@@ -243,9 +242,8 @@
 
               <td class="fw-semibold">
                 <a href="{% url 'po-edit' po.id %}?from=table&{{ request.GET.urlencode }}" class="text-decoration-none">
-                  {{ po.po_number|default:po.rfp_number }}
+                  {{ po.po_number }}
                 </a>
-
                 {% if po.is_cancelled %}
                   <span class="badge bg-danger ms-2">Cancelled</span>
                 {% elif po.is_archived %}
@@ -437,7 +435,6 @@ document.addEventListener("DOMContentLoaded", function () {
   addParamTags("approval_status", "Approval");
   addParamTags("product_id", "Product ID");
   addParamTags("po_number", "PO #");
-  addParamTags("rfp_number", "RFP #");
 
   if (qHidden.value) {
     tags.push({ type: "q", key: "Keyword", value: qHidden.value, display: qHidden.value });
@@ -514,7 +511,6 @@ document.addEventListener("DOMContentLoaded", function () {
         approval_status: "Approval",
         product_id: "Product ID",
         po_number: "PO #",
-        rfp_number: "RFP #",
         q: "Keyword",
       };
       tags.push({
