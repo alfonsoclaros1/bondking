@@ -1534,8 +1534,7 @@ class PurchaseOrder(models.Model):
 
     @classmethod
     def get_next_po_number(cls):
-        year = timezone.now().year
-        prefix = f"PO-{year}-"
+        prefix = f"PO-"
 
         last = (
             cls.objects

@@ -254,7 +254,21 @@
               <td class="small text-muted">{{ po.date|date:"Y-m-d" }}</td>
               <td>{{ po.paid_to }}</td>
               <td>{{ po.product_id_ref.code }}</td>
-              <td><span class="badge bg-secondary">{{ po.status|title }}</span></td>
+              <td>
+                <span class="badge bg-secondary">
+                  {% if po.status == "PO_FILING" %}
+                    PO Filing
+                  {% elif po.status == "PURCHASE_ORDER_CREATION" %}
+                    Purchase Order Creation
+                  {% elif po.status == "PURCHASE_ORDER_APPROVAL" %}
+                    Purchase Order Approval
+                  {% elif po.status == "BILLING" %}
+                    Billing
+                  {% else %}
+                    {{ po.status|title }}
+                  {% endif %}
+                </span>
+              </td>
               <td class="small">{{ po.prepared_by.get_full_name|default:po.prepared_by.username }}</td>
 
               <td>
