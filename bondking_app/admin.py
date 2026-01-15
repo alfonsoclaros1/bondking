@@ -13,3 +13,4 @@ admin.site.register(InventoryIssuanceItem)
 
 admin.site.register(PurchaseOrder)
 admin.site.register(PurchaseOrderParticular)
+admin.site.register(Billing)

@@ -5,6 +5,7 @@ from django.core.validators import RegexValidator
 
 from .models import (
     Billing,
+    BillingStatus,
     Client,
     InventoryIssuance,
     InventoryIssuanceItem,
@@ -691,34 +692,59 @@ InventoryIssuanceItemFormSet = inlineformset_factory(
 class BillingForm(forms.ModelForm):
     class Meta:
         model = Billing
-        fields = ["amount", "cheque_number", "status"]
+        fields = [ "amount", "check_number"]
         widgets = {
-            "billing_number": forms.TextInput(attrs={"class": "form-control text-muted"}),
             "amount": forms.NumberInput(attrs={"class": "form-control text-end"}),
-            "cheque_number": forms.TextInput(attrs={"class": "form-control"}),
-            "status": forms.Select(attrs={"class": "form-select"}),
+            "check_number": forms.TextInput(attrs={"class": "form-control"}),
         }
 
+
     def __init__(self, *args, **kwargs):
-        self.stage = kwargs.pop("stage", None)
+        # ---- extract custom kwargs ----
+        raw_stage = kwargs.pop("stage", "")
+        self.stage = str(raw_stage or "").strip()
         self.user = kwargs.pop("user", None)
+
         super().__init__(*args, **kwargs)
 
-        # If billing is cancelled, lock
-        if self.instance.pk and getattr(self.instance, "is_cancelled", False):
-            for f in self.fields.values():
-                f.disabled = True
-            return
+        billing = self.instance
+        is_new = billing.pk is None
 
-        # Editable only in BILLING stage
-        editable = (self.stage == "BILLING")
-        if not editable:
-            for f in self.fields.values():
-                f.required = False
-                f.widget.attrs["readonly"] = True
-                f.widget.attrs["tabindex"] = "-1"
-                f.widget.attrs["style"] = "background:#f8f9fa;"
-            self.fields["status"].disabled = True
+        # ---- EXPLICIT editability decision ----
+        editable = False
+
+        if self.stage == "BILLING":
+            if is_new:
+                editable = True
+            elif billing.status == BillingStatus.CHECK_CREATION:
+                editable = True
+
+        # superuser override
+        if self.user and self.user.is_superuser:
+            editable = True
+
+        # ---- EXPLICIT FIELD CONTROL (NO LEAKS) ----
+        self._apply_editability(editable)
+
+    def _apply_editability(self, editable: bool):
+        """
+        Hard-enable / hard-disable billing fields.
+        This is the single source of truth.
+        """
+        for name in ("check_number", "amount"):
+            field = self.fields[name]
+            widget = field.widget
+
+            if editable:
+                # ENABLE
+                field.disabled = False
+                widget.attrs.pop("readonly", None)
+                widget.attrs.pop("tabindex", None)
+            else:
+                # DISABLE
+                field.disabled = True
+                widget.attrs["readonly"] = "readonly"
+                widget.attrs["tabindex"] = "-1"
 
 
 class BaseBillingFormSet(BaseInlineFormSet):
@@ -737,10 +763,11 @@ class BaseBillingFormSet(BaseInlineFormSet):
             self.can_delete = False
             self.extra = 0
 
-    def _construct_form(self, i, **kwargs):
-        kwargs["stage"] = self.stage
+    def get_form_kwargs(self, index):
+        kwargs = super().get_form_kwargs(index)
+        kwargs["stage"] = str(self.stage) if self.stage is not None else ""
         kwargs["user"] = self.user
-        return super()._construct_form(i, **kwargs)
+        return kwargs
 
 
 BillingFormSet = inlineformset_factory(
@@ -748,7 +775,7 @@ BillingFormSet = inlineformset_factory(
     Billing,
     form=BillingForm,
     formset=BaseBillingFormSet,
-    fields=["amount", "cheque_number", "status"],
-    extra=3,
+    fields=("check_number", "amount"),  # 🔑 EXPLICIT FIELDS
+    extra=0,
     can_delete=True,
 )

@@ -1385,6 +1385,11 @@ class PurchaseOrder(models.Model):
         blank=True,
         help_text="Usually Accounting Head",
     )
+    cheque_number = models.CharField(
+        max_length=50,
+        blank=True,
+        null=True,
+    )
     approved_by = models.ForeignKey(
         User,
         on_delete=models.PROTECT,
@@ -1678,13 +1683,12 @@ class BillingStatus(models.TextChoices):
 
 
 class Billing(models.Model):
-    created_at = models.DateTimeField(auto_now_add=True)
-
     billing_number = models.CharField(
-        max_length=20,
-        unique=True,
+        primary_key=True,
         editable=False,
+        blank=True,   # 🔑 THIS IS CRITICAL
     )
+
 
     source_po = models.ForeignKey(
         "PurchaseOrder",
@@ -1694,11 +1698,12 @@ class Billing(models.Model):
 
     amount = models.DecimalField(max_digits=12, decimal_places=2)
 
-    cheque_number = models.CharField(
+    check_number = models.CharField(
         max_length=50,
         blank=True,
         null=True,
     )
+    created_at = models.DateTimeField(auto_now_add=True)
 
     status = models.CharField(
         max_length=30,
@@ -1710,20 +1715,35 @@ class Billing(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.billing_number:
-            self.billing_number = Billing.get_next_billing_number()
+            if not self.source_po:
+                raise ValueError("Billing must have source_po before saving.")
+            self.billing_number = Billing.get_next_billing_number(self.source_po)
         super().save(*args, **kwargs)
+
+
 
     @staticmethod
     def get_next_billing_number():
-        year = timezone.now().year
+        """
+        Format: B-YYYY-XXXX
+        YYYY = PO year
+        XXXX = increment per year
+        """
+        year = 6202
+        prefix = f"B-{year}-"
+
         last = (
             Billing.objects
-            .filter(billing_number__startswith=f"B-{year}")
+            .filter(billing_number__startswith=prefix)
             .order_by("-billing_number")
             .first()
         )
-        next_seq = 1 if not last else int(last.billing_number.split("-")[-1]) + 1
-        return f"B-{year}-{next_seq:04d}"
+
+        next_seq = 1
+        if last:
+            next_seq = int(last.billing_number.split("-")[-1]) + 1
+
+        return f"{prefix}{next_seq:04d}"
     
 PO_CANCEL_ROLES = {"RVT"}
 

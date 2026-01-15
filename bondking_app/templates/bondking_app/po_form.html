@@ -5,14 +5,40 @@
 {% block content %}
 <div class="container py-3" style="max-width: 1100px;">
   <div class="d-flex justify-content-between align-items-center mb-3">
+    <!-- LEFT: Title -->
     <div>
       <h4 class="mb-0">
         {% if is_create %}New Purchase Order{% else %}Edit Purchase Order{% endif %}
       </h4>
       <small class="text-muted">Stage: {{ stage }}</small>
     </div>
-    <a href="{% url 'po-table' %}" class="btn btn-outline-secondary btn-sm">Back to Table</a>
+
+    <!-- RIGHT: Navigation buttons -->
+    <div class="d-flex align-items-center gap-2">
+      <a href="{% url 'po-table' %}" class="btn btn-outline-secondary btn-sm">
+        Back to Table
+      </a>
+
+      {% if prev_po %}
+        <a
+          href="{% url 'po-edit' prev_po.id %}?{{ nav_querystring }}"
+          class="btn btn-sm btn-outline-secondary"
+        >
+          Prev
+        </a>
+      {% endif %}
+
+      {% if next_po %}
+        <a
+          href="{% url 'po-edit' next_po.id %}?{{ nav_querystring }}"
+          class="btn btn-sm btn-outline-secondary"
+        >
+          Next
+        </a>
+      {% endif %}
+    </div>
   </div>
+
 
   <form method="post" novalidate>
     {% csrf_token %}
@@ -221,28 +247,50 @@
     <div class="card mb-4">
       <div class="card-header py-2 d-flex justify-content-between align-items-center">
         <strong>Billings</strong>
-        <div class="small text-muted">
-          Total Billed: ₱{{ billed_total|floatformat:2 }} |
-          Balance: ₱{{ balance|floatformat:2 }}
+
+        <div class="d-flex align-items-center gap-2">
+          <div class="small text-muted">
+            Total Billed: ₱{{ billed_total|floatformat:2 }} |
+            Balance: ₱{{ balance|floatformat:2 }}
+          </div>
+
+          {% if po.status == "BILLING" %}
+            <button
+              type="button"
+              class="btn btn-sm btn-outline-primary"
+              id="add-billing-row-btn"
+            >
+              + Add Billing
+            </button>
+          {% endif %}
         </div>
       </div>
 
+
       <div class="card-body">
         {{ billing_formset.management_form }}
-
+        <template id="billing-empty-form">
+          <tr>
+            {% for h in billing_formset.empty_form.hidden_fields %}{{ h }}{% endfor %}
+            <td><span class="text-muted">Auto</span></td>
+            <td>{{ billing_formset.empty_form.check_number }}</td>
+            <td class="text-end">{{ billing_formset.empty_form.amount }}</td>
+            <td><span class="text-muted">Check Creation</span></td>
+          </tr>
+        </template>
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0">
             <thead class="table-light">
               <tr>
                 <th style="width:160px;">Billing #</th>
+                <th style="width:200px;">Check #</th>
                 <th class="text-end" style="width:160px;">Amount</th>
-                <th style="width:200px;">Cheque #</th>
                 <th style="width:160px;">Status</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="billings-tbody">
               {% for f in billing_formset.forms %}
-                {{ f.id }}
+                {% for h in f.hidden_fields %}{{ h }}{% endfor %}
                 <tr class="{% if f.instance.is_cancelled %}table-danger{% endif %}">
                   <td>
                     {% if f.instance.pk %}
@@ -251,15 +299,15 @@
                       <span class="text-muted">Auto</span>
                     {% endif %}
                   </td>
+                  <td>{{ f.check_number }}</td>
                   <td class="text-end">{{ f.amount }}</td>
-                  <td>{{ f.cheque_number }}</td>
                   <td>
                     <!-- clickable badge for modal -->
                     {% if f.instance.pk %}
                       <button
                         type="button"
                         class="btn btn-sm btn-outline-secondary billing-status-btn"
-                        data-billing-id="{{ f.instance.id }}"
+                        data-billing-id="{{ f.instance.pk }}"
                         data-billing-number="{{ f.instance.billing_number }}"
                         data-status="{{ f.instance.status }}"
                         data-status-label="{{ f.instance.get_status_display }}"
@@ -268,7 +316,7 @@
                         {{ f.instance.get_status_display }}
                       </button>
                     {% else %}
-                      {{ f.status }}
+                      <span class="text-muted">Check Creation</span>
                     {% endif %}
                   </td>
                 </tr>
@@ -421,14 +469,23 @@
         </div>
 
         <div class="d-flex gap-2">
-          <button type="button" class="btn btn-primary btn-sm d-none" id="bm-proceed-btn">
+          <button
+            type="button"
+            class="btn btn-primary d-none"
+            id="bm-proceed-btn"
+          >
             Proceed to Next Status
           </button>
 
-          <button type="button" class="btn btn-outline-danger btn-sm d-none" id="bm-cancel-btn">
+          <button
+            type="button"
+            class="btn btn-danger d-none"
+            id="bm-cancel-btn"
+          >
             Cancel Billing
           </button>
         </div>
+
 
         <div class="text-danger small mt-2 d-none" id="bm-error"></div>
       </div>
@@ -659,6 +716,13 @@ function formatPeso(value) {
 </style>
 
 <script>
+function prettyStatus(status) {
+  return status
+      .replaceAll("_", " ")
+      .toLowerCase()
+      .replace(/\b\w/g, c => c.toUpperCase());
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   const modalEl = document.getElementById("billingStatusModal");
   if (!modalEl) return;
@@ -684,6 +748,11 @@ document.addEventListener("DOMContentLoaded", function () {
     if (status === "PAID") return "Billing is fully paid.";
     return "Awaiting action.";
   }
+  const BILLING_STATUS_LABELS = {
+    CHECK_CREATION: "Complete Check Creation",
+    PAYMENT_RELEASE: "Complete Payment Release",
+    PAID: "Mark as Paid",
+  };
 
   document.querySelectorAll(".billing-status-btn").forEach(btn => {
     btn.addEventListener("click", function(){
@@ -710,6 +779,20 @@ document.addEventListener("DOMContentLoaded", function () {
       if (!cancelled) {
         cancelBtn.classList.remove("d-none");
       }
+      // === Dynamic button label ===
+      const pretty = prettyStatus(status);
+      proceedBtn.textContent = `Complete ${pretty}`;
+
+      // === Show / hide buttons based on status ===
+      proceedBtn.classList.toggle(
+        "d-none",
+        status === "PAID" || status === "CANCELLED"
+      );
+
+      cancelBtn.classList.toggle(
+        "d-none",
+        status === "CANCELLED"
+      );
 
       modal.show();
     });
@@ -752,6 +835,29 @@ document.addEventListener("DOMContentLoaded", function () {
       errEl.textContent = e.message;
       errEl.classList.remove("d-none");
     }
+  });
+});
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const btn = document.getElementById("add-billing-row-btn");
+  if (!btn) return; // button only exists in BILLING stage
+
+  btn.addEventListener("click", function () {
+    const totalFormsInput = document.getElementById("id_billings-TOTAL_FORMS");
+    const tbody = document.getElementById("billings-tbody");
+    const tpl = document.getElementById("billing-empty-form");
+
+    if (!totalFormsInput || !tbody || !tpl) {
+      console.error("Billing formset DOM missing:", { totalFormsInput, tbody, tpl });
+      return;
+    }
+
+    const index = parseInt(totalFormsInput.value || "0", 10);
+    const newRow = tpl.innerHTML.replace(/__prefix__/g, index);
+
+    tbody.insertAdjacentHTML("beforeend", newRow);
+    totalFormsInput.value = index + 1;
   });
 });
 </script>

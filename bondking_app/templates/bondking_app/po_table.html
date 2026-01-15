@@ -133,6 +133,39 @@
              class="btn btn-sm btn-outline-success">
             Export to Excel
           </a>
+          <div class="dropdown">
+            <button
+              class="btn btn-sm btn-outline-primary dropdown-toggle"
+              type="button"
+              data-bs-toggle="dropdown"
+              id="poBulkActionsBtn"
+              disabled
+            >
+              Actions
+            </button>
+
+            <ul class="dropdown-menu">
+              <li>
+                <button type="button" class="dropdown-item" onclick="poBulkOpen()">
+                  Open
+                </button>
+              </li>
+
+              {% if is_top_management %}
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <button type="button" class="dropdown-item text-warning" onclick="poBulkArchive()">
+                    Archive
+                  </button>
+                </li>
+                <li>
+                  <button type="button" class="dropdown-item text-danger" onclick="poBulkCancel()">
+                    Cancel
+                  </button>
+                </li>
+              {% endif %}
+            </ul>
+          </div>
 
           <!-- SORT DROPDOWN BUTTON -->
           <div class="dropdown">
@@ -184,7 +217,6 @@
             <th>Prepared By</th>
             <th>Approval</th>
             <th class="text-end">Total</th>
-            <th class="text-end">Actions</th>
           </tr>
         </thead>
 
@@ -210,7 +242,7 @@
               </td>
 
               <td class="fw-semibold">
-                <a href="{% url 'po-edit' po.id %}" class="text-decoration-none">
+                <a href="{% url 'po-edit' po.id %}?from=table&{{ request.GET.urlencode }}" class="text-decoration-none">
                   {{ po.po_number|default:po.rfp_number }}
                 </a>
 
@@ -237,20 +269,6 @@
               </td>
 
               <td class="text-end fw-semibold">₱{{ po.total|floatformat:2|intcomma }}</td>
-
-              <td class="text-end">
-                <a href="{% url 'po-edit' po.id %}" class="btn btn-outline-primary btn-sm">Open</a>
-
-                {% if is_top_management and not po.is_cancelled %}
-                  <form method="post"
-                        action="{% url 'po-cancel' po.id %}"
-                        class="d-inline"
-                        onsubmit="return confirm('Cancel this PO? This cannot be undone.')">
-                    {% csrf_token %}
-                    <button class="btn btn-sm btn-outline-danger">Cancel</button>
-                  </form>
-                {% endif %}
-              </td>
             </tr>
           {% empty %}
             <tr>
@@ -282,7 +300,10 @@
             {% endif %}
             {% if page_obj.has_next %}
               <li class="page-item">
-                <a class="page-link" href="?{% querystring page=page_obj.next_page_number %}">›</a>
+                <a class="page-link"
+                  href="?{{ base_querystring }}{% if base_querystring %}&{% endif %}page={{ page_obj.next_page_number }}">
+                  ›
+                </a>
               </li>
             {% endif %}
           </ul>
@@ -643,8 +664,38 @@ document.addEventListener("DOMContentLoaded", function () {
     cb.checked = !cb.checked;
     row.classList.toggle("selected", cb.checked);
     refreshSelectedFooter();
+    refreshPOBulkButton(); // ✅ ADD THIS
   });
 
 });
+
+
+function getSelectedPOIds() {
+  return Array.from(document.querySelectorAll(".po-checkbox:checked"))
+    .map(cb => cb.value);
+}
+
+function refreshPOBulkButton() {
+  document.getElementById("poBulkActionsBtn").disabled =
+    getSelectedPOIds().length === 0;
+}
+
+document.addEventListener("change", e => {
+  if (e.target.classList.contains("po-checkbox") || e.target.id === "select-all") {
+    refreshPOBulkButton();
+  }
+});
+function poBulkOpen() {
+  const ids = getSelectedPOIds();
+  if (!ids.length) return;
+
+  const firstId = ids[0];
+
+  window.location.href =
+    `/po/${firstId}/edit/?from=bulk&nav_ids=${ids.join(",")}`;
+}
+
 </script>
+
+
 {% endblock %}

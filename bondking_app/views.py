@@ -1396,17 +1396,66 @@ def po_edit(request, pk):
         request.POST or None,
         instance=po,
         prefix="billings",
-        stage=stage,
+        stage=po.status,
         user=request.user,
     )
+    print("=== VALIDATION DEBUG ===")
+    print("PO form valid:", form.is_valid())
+    print("PO errors:", form.errors)
 
+    print("Particulars valid:", formset.is_valid())
+    print("Particulars errors:", formset.errors)
+
+    print("Billing valid:", billing_formset.is_valid())
+    print("Billing errors:", billing_formset.errors)
+    print("Billing non-form errors:", billing_formset.non_form_errors())
     if request.method == "POST" and request.POST.get("action") == "save":
-        if form.is_valid() and formset.is_valid() and billing_formset.is_valid():
-            form.save()
-            formset.save()
-            billing_formset.save()
-            return redirect("po-table")
+        form = PurchaseOrderForm(
+            request.POST or None,
+            instance=po,
+            stage=stage,
+            user=request.user,
+        )
 
+        formset = PurchaseOrderParticularFormSet(
+            request.POST or None,
+            instance=po,
+            prefix="parts",
+            stage=stage,
+            approval_status=po.approval_status,
+        )
+        billing_formset = BillingFormSet(
+            request.POST or None,
+            instance=po,
+            prefix="billings",
+            stage=po.status,
+            user=request.user,
+        )
+        if form.is_valid() and formset.is_valid() and billing_formset.is_valid():
+            po = form.save()
+            formset.save()
+
+            billings = billing_formset.save(commit=False)
+
+            for billing in billings:
+                if not billing.billing_number:
+                    billing.billing_number = Billing.get_next_billing_number()
+                    billing.source_po = po
+                    billing.status = BillingStatus.CHECK_CREATION
+                billing.save()
+
+            billing_formset.save_m2m()
+            return redirect("po-edit", po.id)
+
+        if not form.is_valid():
+            print("PO FORM ERRORS:", form.errors)
+
+        if not formset.is_valid():
+            print("PARTICULARS FORMSET ERRORS:", formset.errors)
+
+        if not billing_formset.is_valid():
+            print("BILLING FORMSET ERRORS:", billing_formset.errors)
+            print("BILLING NON-FORM ERRORS:", billing_formset.non_form_errors())
 
     # ==========================
     # EDIT PERMISSIONS
@@ -1440,6 +1489,7 @@ def po_edit(request, pk):
         POStatus.REQUEST_FOR_PAYMENT_APPROVAL,
         POStatus.PURCHASE_ORDER,
         POStatus.PURCHASE_ORDER_APPROVAL,
+        POStatus.BILLING,
         POStatus.PO_FILING,
         POStatus.ARCHIVED,
     ]
@@ -1473,9 +1523,7 @@ def po_edit(request, pk):
     }
 
     APPROVAL_REQUIRED_SUBMIT_STAGES = {
-        POStatus.CHECK_CREATION,
-        POStatus.CHECK_SIGNING,
-        POStatus.PAYMENT_RELEASE,
+        POStatus.BILLING,
     }
 
     role = get_user_role(request.user)
@@ -1487,6 +1535,86 @@ def po_edit(request, pk):
         and (request.user.is_superuser or role in meta.get("forward_roles", set()))
         and (not meta.get("requires_approval") or po.approval_status == POApprovalStatus.APPROVED)
     )
+
+    # =========================
+    # PO NAVIGATION (Prev / Next)
+    # =========================
+    prev_po = None
+    next_po = None
+
+    nav_from = request.GET.get("from")
+    nav_ids = request.GET.get("nav_ids")
+    qs = request.GET.copy()
+    qs.pop("page", None)
+    nav_querystring = qs.urlencode()
+    if nav_from == "bulk" and nav_ids:
+        try:
+            ids = [int(i) for i in nav_ids.split(",")]
+        except ValueError:
+            ids = []
+
+        if po.id in ids:
+            idx = ids.index(po.id)
+            if idx > 0:
+                prev_po = PurchaseOrder.objects.filter(id=ids[idx - 1]).first()
+            if idx < len(ids) - 1:
+                next_po = PurchaseOrder.objects.filter(id=ids[idx + 1]).first()
+    elif nav_from == "table":
+        qs_table = PurchaseOrder.objects.all()
+
+        # ---- APPLY SAME FILTERS AS po_table ----
+        if request.GET.get("paid_to"):
+            qs_table = qs_table.filter(paid_to__icontains=request.GET["paid_to"])
+
+        if request.GET.get("prepared_by", "").isdigit():
+            qs_table = qs_table.filter(prepared_by_id=int(request.GET["prepared_by"]))
+
+        if request.GET.get("status"):
+            qs_table = qs_table.filter(status=request.GET["status"])
+
+        if request.GET.get("approval_status"):
+            qs_table = qs_table.filter(approval_status=request.GET["approval_status"])
+
+        if request.GET.get("start_date"):
+            qs_table = qs_table.filter(date__gte=request.GET["start_date"])
+
+        if request.GET.get("end_date"):
+            qs_table = qs_table.filter(date__lte=request.GET["end_date"])
+
+        if request.GET.get("product_id"):
+            qs_table = qs_table.filter(product_id_ref_id=request.GET["product_id"])
+
+        if request.GET.get("hide_archived"):
+            qs_table = qs_table.filter(is_archived=False)
+
+        if request.GET.get("hide_cancelled"):
+            qs_table = qs_table.filter(is_cancelled=False)
+
+        # ---- SORT (same keys as table) ----
+        sort_by = request.GET.get("sort_by")
+        if sort_by == "date_asc":
+            qs_table = qs_table.order_by("date")
+        elif sort_by == "date_desc":
+            qs_table = qs_table.order_by("-date")
+        elif sort_by == "total_asc":
+            qs_table = qs_table.order_by("total")
+        elif sort_by == "total_desc":
+            qs_table = qs_table.order_by("-total")
+        elif sort_by == "po_asc":
+            qs_table = qs_table.order_by("po_number")
+        elif sort_by == "po_desc":
+            qs_table = qs_table.order_by("-po_number")
+        else:
+            qs_table = qs_table.order_by("-date")
+
+        ids = list(qs_table.values_list("id", flat=True))
+
+        if po.id in ids:
+            idx = ids.index(po.id)
+            if idx > 0:
+                prev_po = PurchaseOrder.objects.filter(id=ids[idx - 1]).first()
+            if idx < len(ids) - 1:
+                next_po = PurchaseOrder.objects.filter(id=ids[idx + 1]).first()
 
     billed_total = po.billed_total()
     balance = po.balance_amount()
@@ -1511,6 +1639,10 @@ def po_edit(request, pk):
         "billing_formset": billing_formset,
         "billed_total": billed_total,
         "balance": balance,
+        "prev_po": prev_po,
+        "next_po": next_po,
+        "nav_querystring": nav_querystring,
+
     })
 
 
@@ -2010,6 +2142,12 @@ def po_table(request):
         .order_by("paid_to")
     )
     total_sum = qs.aggregate(total=Sum("total"))["total"] or 0
+    # -----------------------------
+    # Pagination-safe querystring
+    # -----------------------------
+    qs = request.GET.copy()
+    qs.pop("page", None)
+    base_querystring = qs.urlencode()
 
     return render(request, "bondking_app/po_table.html", {
         "page_obj": page_obj,
@@ -2038,6 +2176,7 @@ def po_table(request):
         "product_ids": ProductID.objects.filter(is_active=True).order_by("code"),
         "statuses": [s for s, _ in POStatus.choices],
         "product_id": product_id_ids,
+        "base_querystring": base_querystring,
     })
 
 

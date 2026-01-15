@@ -61,8 +61,9 @@ urlpatterns = [
     path("product-ids/quick-create/",views.product_id_quick_create,name="product-id-quick-create",),
     path("po/<int:pk>/print/", views.po_print, name="po-print"),
     path("api/po/filter-suggestions/", views.po_filter_suggestions_api, name="po-filter-suggestions"),
-    path("billing/<int:pk>/advance/", views.billing_advance, name="billing-advance"),
-    path("billing/<int:pk>/cancel/", views.billing_cancel, name="billing-cancel"),
+    path("billing/<str:pk>/advance/", views.billing_advance, name="billing-advance"),
+    path("billing/<str:pk>/cancel/", views.billing_cancel, name="billing-cancel"),
+
 
 
     
