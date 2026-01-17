@@ -255,6 +255,9 @@ class DeliveryReceiptForm(forms.ModelForm):
                 "delivery_status",
             }
 
+            # Door-to-door needs delivery date
+            if self.data.get("delivery_method") == DeliveryMethod.DOOR_TO_DOOR:
+                self.fields["date_of_delivery"].disabled = False
             for fname, field in self.fields.items():
                 if fname not in blocked:
                     field.disabled = False
