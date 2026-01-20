@@ -270,7 +270,8 @@ class DeliveryReceiptForm(forms.ModelForm):
                 # Existing rules
                 for fname in ["date_of_delivery", "payment_details"]:
                     if fname in self.fields:
-                        self.fields[fname].disabled = False
+                        self.fields[fname].widget.attrs["readonly"] = True
+
 
                 # ✅ NEW: Proof of Delivery ONLY in DELIVERED
                 if stage == "DELIVERED":
