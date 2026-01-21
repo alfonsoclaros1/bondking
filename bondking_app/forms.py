@@ -121,6 +121,14 @@ class DeliveryReceiptForm(forms.ModelForm):
         kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
 
+        # --- LIMIT AGENT DROPDOWN TO ActiveAgent GROUP ---
+        if "agent" in self.fields:
+            self.fields["agent"].queryset = (
+                User.objects
+                .filter(groups__name="ActiveAgent")
+                .distinct()
+                .order_by("first_name", "last_name", "username")
+            )
 
         # Default: lock these fields
         self.fields["delivery_status"].disabled = True

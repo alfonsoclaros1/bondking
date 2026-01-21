@@ -5,9 +5,8 @@ from django.db import models
 from django.db.models import Sum
 from django.utils import timezone
 
-
-User = settings.AUTH_USER_MODEL
-
+from django.contrib.auth import get_user_model
+User = get_user_model()
 # =========================
 #  ROLE / GROUP CONSTANTS
 # =========================
