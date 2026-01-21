@@ -402,7 +402,7 @@ DR_STEP_META = {
         "approver_roles": {"AccountingHead", "TopManagement"},
         "decliner_roles": {"AccountingHead", "TopManagement"},
         "required_fields": [],
-        "required_before_forward": ["payment_details","deposit_slip_no"],  # matches your current precondition
+        "required_before_forward": ["payment_details"],  # matches your current precondition
         "status_map": {"delivery_status": None, "payment_status": PaymentStatus.FOR_DEPOSIT},
         "approval_on_enter_forward": True,
         "auto_approve_on_enter_forward": False,
