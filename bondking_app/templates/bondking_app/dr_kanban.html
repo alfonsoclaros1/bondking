@@ -100,7 +100,7 @@
               data-archive-url="{% url 'dr-archive' dr.id %}"
               data-dr-number="{{ dr.dr_number }}"
               data-client="{{ dr.client.company_name|lower }}"
-              data-agent="{{ dr.agent.get_full_name|default:dr.agent.username|lower }}"
+              data-agent="{{ dr.agent.username }}"
               data-date="{{ dr.date_of_order|date:'Y-m-d' }}"
               data-amount="{{ dr.total_amount }}"
             >
@@ -153,7 +153,7 @@
                 {# Notion-like tags for agent & payment method #}
                 <div class="d-flex flex-wrap gap-1">
                   <span class="badge rounded-pill bg-light border text-muted">
-                    {{ dr.agent.get_full_name|default:dr.agent.username }}
+                      {{ dr.agent.username }}
                   </span>
                   <span class="badge rounded-pill bg-light border text-muted">
                     {{ dr.get_payment_method_display }}
@@ -215,7 +215,7 @@
                 data-dr-number="{{ dr.dr_number }}"
                 data-client="{{ dr.client.company_name|lower }}"
                 data-amount="{{ dr.total_amount }}"
-                data-agent="{{ dr.agent.get_full_name|default:dr.agent.username|lower }}"
+                data-agent="{{ dr.agent.username }}"
                 data-date="{{ dr.date_of_order|date:'Y-m-d' }}"
                 data-archive-url="{% url 'dr-archive' dr.id %}">
               <div class="card-body p-2">
@@ -224,7 +224,7 @@
                   <div class="fw-semibold">
                     <a href="{% url 'dr-edit' dr.id %}"
                       class="text-decoration-none text-reset">
-                      {{ dr.agent.get_full_name|default:dr.agent.username }}
+                        {{ dr.agent.username }}
                     </a>
                   </div>
 

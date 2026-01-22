@@ -121,15 +121,6 @@ class DeliveryReceiptForm(forms.ModelForm):
         kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
 
-        # --- LIMIT AGENT DROPDOWN TO ActiveAgent GROUP ---
-        if "agent" in self.fields:
-            self.fields["agent"].queryset = (
-                User.objects
-                .filter(groups__name="ActiveAgent")
-                .distinct()
-                .order_by("first_name", "last_name", "username")
-            )
-
         # Default: lock these fields
         self.fields["delivery_status"].disabled = True
         self.fields["payment_status"].disabled = True
@@ -278,7 +269,7 @@ class DeliveryReceiptForm(forms.ModelForm):
                 # Existing rules
                 for fname in ["date_of_delivery", "payment_details"]:
                     if fname in self.fields:
-                        self.fields[fname].widget.attrs["readonly"] = True
+                        self.fields[fname].widget.attrs["readonly"] = False
 
 
                 # ✅ NEW: Proof of Delivery ONLY in DELIVERED
