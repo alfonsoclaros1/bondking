@@ -183,9 +183,19 @@
 
     <!-- PARTICULARS -->
     <div class="card mb-4">
-      <div class="card-header py-2">
+      <div class="card-header py-2 d-flex justify-content-between align-items-center">
         <strong>Particulars</strong>
+        {% if can_edit %}
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-primary"
+            id="add-particular-row"
+          >
+            + Add Row
+          </button>
+        {% endif %}
       </div>
+
       <div class="card-body">
 
         {{ formset.management_form }}
@@ -204,7 +214,7 @@
               </tr>
             </thead>
 
-            <tbody>
+            <tbody id="particulars-tbody">
               {% for f in formset.forms %}
               {{ f.id }}
               <tr>
@@ -226,8 +236,23 @@
                 </td>
               </tr>
               {% endfor %}
+
             </tbody>
           </table>
+          <table style="display:none;">
+            <tbody>
+              <tr id="empty-particular-row">
+                {{ formset.empty_form.id }}
+                <td>{{ formset.empty_form.particular }}</td>
+                <td class="text-end">{{ formset.empty_form.quantity }}</td>
+                <td class="text-end">{{ formset.empty_form.unit_price }}</td>
+                <td class="text-end fw-medium align-middle">
+                  ₱ <span class="line-total">0.00</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
         </div>
 
         <!-- SUBTOTAL -->
@@ -927,5 +952,40 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 });
 </script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const btn = document.getElementById("add-particular-row");
+  if (!btn) return;
+
+  // ✅ your formset prefix is "parts"
+  const totalFormsInput = document.getElementById("id_parts-TOTAL_FORMS");
+  const tbody = document.getElementById("particulars-tbody");
+  const tplRow = document.getElementById("empty-particular-row");
+
+  if (!totalFormsInput || !tbody || !tplRow) {
+    console.error("Particulars formset DOM missing:", {
+      totalFormsInput, tbody, tplRow
+    });
+    return;
+  }
+
+  btn.addEventListener("click", function () {
+    const index = parseInt(totalFormsInput.value || "0", 10);
+
+    // clone the row template
+    const html = tplRow.outerHTML
+      .replace(/__prefix__/g, index)
+      .replace('id="empty-particular-row"', "");
+
+    tbody.insertAdjacentHTML("beforeend", html);
+
+    totalFormsInput.value = index + 1;
+
+    // ✅ Trigger recalculation so totals update immediately
+    document.dispatchEvent(new Event("input"));
+  });
+});
+</script>
+
 
 {% endblock %}
