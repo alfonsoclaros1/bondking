@@ -31,6 +31,7 @@ urlpatterns = [
     path("api/clients/<int:pk>/", views.client_detail_api, name="client-detail-api"),
     path("clients/", views.client_table, name="client-table"),
     path("clients/<int:pk>/edit/", views.client_edit, name="client-edit"),
+    path("clients/export/", views.client_table_export, name="client-table-export"),
 
     # DR APIs and actions
     path("api/products/<int:pk>/", views.product_detail_api, name="product-detail-api"),

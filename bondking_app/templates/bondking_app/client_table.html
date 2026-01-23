@@ -65,6 +65,12 @@
       <div class="col-md-3 d-flex gap-2">
         <button class="btn btn-sm btn-primary">Filter</button>
         <a href="{% url 'client-table' %}" class="btn btn-sm btn-outline-secondary">Reset</a>
+        <a
+          href="{% url 'client-table-export' %}?{{ request.GET.urlencode }}"
+          class="btn btn-outline-success btn-sm"
+        >
+          Export to Excel
+        </a>
       </div>
     </div>
   </form>

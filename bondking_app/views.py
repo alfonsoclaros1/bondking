@@ -3139,3 +3139,54 @@ def billing_cancel(request, pk):
     po.log_update(request.user, f"Billing {billing.billing_number} was cancelled.")
 
     return JsonResponse({"ok": True})
+
+
+
+def client_table_export(request):
+    # 🔁 Reuse the SAME filtering logic as client_table
+    qs = Client.objects.all().select_related("agent")
+
+    company = request.GET.get("company")
+    agent = request.GET.get("agent")
+    city = request.GET.get("city")
+
+    if company:
+        qs = qs.filter(company_name__icontains=company)
+
+    if agent:
+        qs = qs.filter(agent_id=agent)
+
+    if city:
+        qs = qs.filter(full_address__icontains=city)
+
+    # =========================
+    # Excel generation
+    # =========================
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Clients"
+
+    ws.append([
+        "Company",
+        "Owner",
+        "Contact",
+        "Address",
+        "Agent",
+    ])
+
+    for c in qs:
+        ws.append([
+            c.company_name,
+            c.name_of_owner,
+            c.contact_number,
+            c.full_address,
+            c.agent.get_full_name() if c.agent else "",
+        ])
+
+    response = HttpResponse(
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = "attachment; filename=clients.xlsx"
+    wb.save(response)
+
+    return response
