@@ -2,6 +2,7 @@ from django import forms
 from django.forms import inlineformset_factory, BaseInlineFormSet
 from django.contrib.auth import get_user_model
 from django.core.validators import RegexValidator
+from django.db.models import Q
 
 from .models import (
     Billing,
@@ -120,6 +121,19 @@ class DeliveryReceiptForm(forms.ModelForm):
         self.user = user
         kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
+        if "agent" in self.fields:
+            agent_q = Q(groups__name="ActiveAgent")
+
+            # ✅ include currently assigned agent (even if inactive)
+            if self.instance.pk and self.instance.agent_id:
+                agent_q |= Q(pk=self.instance.agent_id)
+
+            self.fields["agent"].queryset = (
+                User.objects
+                .filter(agent_q)
+                .distinct()
+            )
+
 
         # Default: lock these fields
         self.fields["delivery_status"].disabled = True
