@@ -714,7 +714,7 @@ class DeliveryReceipt(models.Model):
 
         # Door-to-Door: Sales can move forward from DELIVERED (after approval) - preserve your existing rule
         if self.delivery_method == DeliveryMethod.DOOR_TO_DOOR and current_column == "DELIVERED" and is_forward:
-            allowed_roles = {"SalesAgent", "SalesHead", "TopManagement"}
+            allowed_roles = {"LogisticsHead", "LogisticsOfficer", "SalesHead", "SalesAgent", "SalesOfficer", "TopManagement"}
 
         if actor_role not in allowed_roles:
             raise PermissionDenied(f"Role {actor_role} not allowed to move from {current_column}")
@@ -843,7 +843,6 @@ class DeliveryReceipt(models.Model):
             if is_backward:
                 # your old code doesn’t force approval_status here except special cases above
                 pass
-
         self.save()
 
         # -------------------------------
