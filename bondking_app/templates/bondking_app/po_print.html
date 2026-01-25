@@ -1,3 +1,7 @@
+{% load static %}
+{% load humanize %}
+
+
 <!DOCTYPE html>
 <html>
 <head>
@@ -86,8 +90,8 @@ td, th {
 <tr>
   <!-- LEFT -->
   <td width="50%" valign="top">
-    <img src="bondking_app/img/bondking-logo.png" class="logo">
-    <br>
+      <img src="bondking_app/img/bondking-logo.png" class="logo">
+      <br>
     <div class="doc-title">Purchase Order</div>
   </td>
 
@@ -114,7 +118,7 @@ td, th {
       {% endif %}
       <tr>
         <td class="label">Product ID:</td>
-        <td class="right">{{ po.product_id }}</td>
+        <td class="right">{{ po.product_id_ref.code }}</td>
       </tr>
     </table>
   </td>

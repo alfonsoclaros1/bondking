@@ -2918,37 +2918,48 @@ def dr_print(request, pk):
 def po_print(request, pk):
     po = get_object_or_404(PurchaseOrder, pk=pk)
 
-    items = po.particulars.all()
-
     html = render_to_string(
         "bondking_app/po_print.html",
         {
             "po": po,
-            "items": items,
+            "items": po.particulars.all(),
         },
-        request=request,
+        request=request,  # ✅ REQUIRED (matches dr_print)
     )
 
-    config = pdfkit.configuration(
-        wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
-    )
+    # ✅ Explicit environment detection (MATCH dr_print)
+    IS_RENDER = os.environ.get("RENDER") == "true"
 
-    pdf = pdfkit.from_string(
-        html,
-        False,
-        configuration=config,   # ✅ THIS WAS MISSING
-        options={
-            "page-size": "Letter",
-            "orientation": "Portrait",
-            "margin-top": "15mm",
-            "margin-bottom": "15mm",
-            "margin-left": "15mm",
-            "margin-right": "15mm",
-            "encoding": "UTF-8",
-            "enable-local-file-access": "",
-        },
-    )
+    if IS_RENDER:
+        # ===== PRODUCTION (Render / Linux) =====
+        from weasyprint import HTML
 
+        pdf = HTML(
+            string=html,
+            base_url=settings.STATIC_ROOT  # 🔑 REQUIRED FOR STATIC FILES
+        ).write_pdf()
+
+    else:
+        # ===== LOCAL (Windows) =====
+        config = pdfkit.configuration(
+            wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
+        )
+
+        pdf = pdfkit.from_string(
+            html,
+            False,
+            configuration=config,
+            options={
+                "page-size": "Letter",
+                "orientation": "Portrait",
+                "margin-top": "15mm",
+                "margin-bottom": "15mm",
+                "margin-left": "15mm",
+                "margin-right": "15mm",
+                "encoding": "UTF-8",
+                "--enable-local-file-access": ""
+            }
+        )
 
     response = HttpResponse(pdf, content_type="application/pdf")
     response["Content-Disposition"] = f'inline; filename="PO-{po.po_number}.pdf"'
