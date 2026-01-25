@@ -2917,16 +2917,22 @@ def dr_print(request, pk):
 @login_required
 def po_print(request, pk):
     po = get_object_or_404(PurchaseOrder, pk=pk)
+    items = po.particulars.all()
+
+    subtotal = sum(
+        (it.total_price or 0) for it in items
+    )
 
     html = render_to_string(
         "bondking_app/po_print.html",
         {
             "po": po,
-            "items": po.particulars.all(),
+            "items": items,
+            "subtotal": subtotal,
+            "total": subtotal,  # tax / shipping are zero
         },
-        request=request,  # ✅ REQUIRED (matches dr_print)
+        request=request,
     )
-
     # ✅ Explicit environment detection (MATCH dr_print)
     IS_RENDER = os.environ.get("RENDER") == "true"
 
