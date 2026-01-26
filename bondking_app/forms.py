@@ -8,6 +8,7 @@ from .models import (
     Billing,
     BillingStatus,
     Client,
+    DeliveryStatus,
     InventoryIssuance,
     InventoryIssuanceItem,
     Product,
@@ -258,7 +259,6 @@ class DeliveryReceiptForm(forms.ModelForm):
         if stage == "NEW_DR":
             blocked = {
                 "dr_number",
-                "date_of_delivery",
                 "payment_due",
                 "payment_details",
                 "proof_of_delivery",
@@ -278,12 +278,18 @@ class DeliveryReceiptForm(forms.ModelForm):
         # ------------------------------------------------------------
         # 2. FOR_DELIVERY / DELIVERED
         # ------------------------------------------------------------
-        elif stage in ["FOR_DELIVERY", "DELIVERED"]:
+        elif stage == "FOR_DELIVERY":
             if role in logistics_roles or user.is_superuser or is_top_management(user):
-                # Existing rules
                 for fname in ["date_of_delivery", "payment_details"]:
                     if fname in self.fields:
                         self.fields[fname].disabled = False
+
+        elif self.instance.delivery_status == DeliveryStatus.DELIVERED:
+            if role in logistics_roles or user.is_superuser or is_top_management(user):
+                # date_of_delivery MUST remain editable and submittable
+                self.fields["date_of_delivery"].disabled = False
+                self.fields["payment_details"].disabled = False
+
 
 
                 # ✅ NEW: Proof of Delivery ONLY in DELIVERED
@@ -346,6 +352,8 @@ class DeliveryReceiptForm(forms.ModelForm):
         ):
             self.fields["delivery_status"].disabled = False
             self.fields["payment_status"].disabled = False
+        print("DEBUG ROLE:", role)
+        print("GROUPS:", list(user.groups.values_list("name", flat=True)))
 
                 
     def clean_date_of_delivery(self):
